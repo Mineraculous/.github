@@ -1,0 +1,40 @@
+name: Reusable README Sync
+
+on:
+  workflow_call:
+    inputs:
+      modrinth-id:
+        description: 'Modrinth slug or project ID'
+        required: false
+        type: string
+      curseforge-id:
+        description: 'CurseForge numeric project ID'
+        required: false
+        type: string
+      readme-path:
+        description: 'Path to markdown readme file'
+        required: false
+        default: 'README.md'
+        type: string
+    secrets:
+      MODRINTH_API_KEY:
+        required: false
+      CURSEFORGE_API_KEY:
+        required: false
+
+jobs:
+  sync:
+    name: Sync README to Modrinth and CurseForge
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Sync README Description
+        uses: btwonion/mc-readme-sync@v1
+        with:
+          modrinth-api-key: ${{ secrets.MODRINTH_API_KEY }}
+          curseforge-api-key: ${{ secrets.CURSEFORGE_API_KEY }}
+          modrinth-project-id: ${{ inputs.modrinth-id }}
+          curseforge-project-id: ${{ inputs.curseforge-id }}
+          readme-path: ${{ inputs.readme-path }}

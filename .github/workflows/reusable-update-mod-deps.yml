@@ -1,0 +1,47 @@
+name: Reusable Mod Dependency Updater
+
+on:
+  workflow_call:
+    inputs:
+      config-path:
+        description: 'Path to mod dependencies JSON file'
+        required: false
+        default: '.github/mod_deps.json'
+        type: string
+    secrets:
+      SYNC_TOKEN:
+        description: 'Token with repo write and pull request write permissions'
+        required: false
+
+jobs:
+  update-mod-deps:
+    name: Check Mod Updates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout caller repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout central tooling
+        uses: actions/checkout@v4
+        with:
+          repository: 'Mineraculous/.github'
+          path: '.central-tooling'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Run Central Dependency Updater
+        env:
+          GH_TOKEN: ${{ secrets.SYNC_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.SYNC_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          python .central-tooling/scripts/update_modrinth_deps.py --config "${{ inputs.config-path }}"
