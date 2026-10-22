@@ -1,4 +1,4 @@
-name: Reusable README Sync
+name: README Sync
 
 on:
   workflow_call:

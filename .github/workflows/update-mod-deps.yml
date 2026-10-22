@@ -1,4 +1,4 @@
-name: Reusable Mod Dependency Updater
+name: Mod Dependency Updater
 
 on:
   workflow_call:

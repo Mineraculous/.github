@@ -31,14 +31,6 @@
       ]
     },
     {
-      "description": "Ignore dynamic and toolchain Gradle plugins",
-      "enabled": false,
-      "matchPackageNames": [
-        "dev.lukebemish.immaculate",
-        "org.gradle.toolchains.foojay-resolver-convention"
-      ]
-    },
-    {
       "description": "NeoForge Maven registry",
       "registryUrls": [
         "https://maven.neoforged.net/releases"
