@@ -8,6 +8,11 @@ on:
         required: false
         default: '.github/mod_deps.json'
         type: string
+      base-branch:
+        description: 'Target base branch to update dependencies against (defaults to GITHUB_REF_NAME or current branch)'
+        required: false
+        default: ''
+        type: string
     secrets:
       SYNC_TOKEN:
         description: 'Token with repo write and pull request write permissions'
@@ -47,4 +52,8 @@ jobs:
           GH_TOKEN: ${{ secrets.SYNC_TOKEN || secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.SYNC_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
-          python .central-tooling/scripts/update_modrinth_deps.py --config "${{ inputs.config-path }}"
+          EXTRA_ARGS=""
+          if [ -n "${{ inputs.base-branch }}" ]; then
+            EXTRA_ARGS="--base ${{ inputs.base-branch }}"
+          fi
+          python .central-tooling/scripts/update_modrinth_deps.py --config "${{ inputs.config-path }}" $EXTRA_ARGS

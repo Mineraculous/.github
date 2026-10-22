@@ -157,7 +157,32 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Print updates without modifying git")
     parser.add_argument("--config", default=".github/mod_deps.json", help="Path to mod dependencies config JSON")
     parser.add_argument("--gradle-properties", default="gradle.properties", help="Path to gradle.properties")
+    parser.add_argument(
+        "--base",
+        default=None,
+        help="Base branch to create PRs against (defaults to GITHUB_REF_NAME or current git branch)",
+    )
     args = parser.parse_args()
+
+    # Determine base branch from argument, GITHUB_REF_NAME, or git
+    base_branch = args.base
+    if not base_branch:
+        base_branch = os.environ.get("GITHUB_REF_NAME")
+    if not base_branch:
+        try:
+            res = subprocess.run(
+                ["git", "branch", "--show-current"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            base_branch = res.stdout.strip()
+        except Exception:
+            pass
+    if not base_branch:
+        base_branch = "main"
+
+    print(f"Base branch for updates: {base_branch}")
 
     props_path = Path(args.gradle_properties)
     if not props_path.exists():
@@ -218,7 +243,16 @@ def main():
         commit_msg = f"chore(deps): update {display_name} to {new_val} ({loader} {mc_version})"
         print(f"\nProcessing PR for {display_name} -> {new_val} on branch {branch}...")
 
-        subprocess.run(["git", "checkout", "-B", branch, "origin/main"], check=True)
+        # Determine base ref for creating branch (prefer origin/<base_branch> if it exists, else <base_branch>)
+        base_ref = f"origin/{base_branch}"
+        check_ref = subprocess.run(
+            ["git", "rev-parse", "--verify", base_ref],
+            capture_output=True,
+        )
+        if check_ref.returncode != 0:
+            base_ref = base_branch
+
+        subprocess.run(["git", "checkout", "-B", branch, base_ref], check=True)
         update_gradle_properties(props_path, {prop_key: new_val})
 
         subprocess.run(["git", "add", str(props_path)], check=True)
@@ -256,7 +290,7 @@ def main():
                     "gh", "pr", "create",
                     "--title", commit_msg,
                     "--body", body,
-                    "--base", "main",
+                    "--base", base_branch,
                     "--head", branch,
                 ],
                 capture_output=True,
@@ -267,7 +301,7 @@ def main():
             else:
                 print(f"  -> [WARNING] gh pr create failed: {res.stderr.strip()}", file=sys.stderr)
 
-        subprocess.run(["git", "checkout", "main"], check=True)
+        subprocess.run(["git", "checkout", base_branch], check=True)
 
 
 if __name__ == "__main__":
