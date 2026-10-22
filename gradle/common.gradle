@@ -48,14 +48,10 @@ repositories {
 		}
 		filter { includeGroupAndSubgroups "maven.modrinth" }
 	}
-	exclusiveContent {
-		forRepository {
-			maven {
-				name = 'JEI'
-				url = 'https://maven.blamejared.com/'
-			}
-		}
-		filter {
+	maven {
+		name = 'JEI'
+		url = 'https://maven.blamejared.com/'
+		content {
 			includeGroupAndSubgroups "mezz.jei"
 			includeGroupAndSubgroups "net.mezzdev"
 		}
