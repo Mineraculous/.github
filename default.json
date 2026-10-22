@@ -64,6 +64,15 @@
       "enabled": true
     },
     {
+      "description": "Voice Chat Maven registry",
+      "registryUrls": [
+        "https://maven.maxhenkel.de/repository/public"
+      ],
+      "matchPackageNames": [
+        "/^de\\.maxhenkel\\.voicechat/"
+      ]
+    },
+    {
       "description": "Voice Chat API (Minecraft-version independent)",
       "matchManagers": [
         "gradle"
