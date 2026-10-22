@@ -1,0 +1,94 @@
+name: sync-resources
+
+on:
+  workflow_call:
+    inputs:
+      mod-id:
+        description: "Resource directory/mod ID name (e.g. mineraculous, mineraculouskamikotizations)"
+        required: true
+        type: string
+      target-repo:
+        description: "Target repository to push resources into"
+        required: false
+        type: string
+        default: "Mineraculous/Resources"
+      target-branch:
+        description: "Target repository branch"
+        required: false
+        type: string
+        default: "main"
+    secrets:
+      SYNC_TOKEN:
+        required: true
+
+jobs:
+  sync-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Repository
+        uses: actions/checkout@v7
+        with:
+          path: source-repo
+
+      - name: Checkout Target Repository
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.target-repo }}
+          token: ${{ secrets.SYNC_TOKEN }}
+          path: target-repo
+          ref: ${{ inputs.target-branch }}
+
+      - name: Merge and Sync Directories
+        run: |
+          mkdir -p staging/${{ inputs.mod-id }}
+          
+          # Copy main resources first
+          if [ -d "source-repo/src/main/resources" ]; then
+            rsync -a source-repo/src/main/resources/ staging/${{ inputs.mod-id }}/
+          fi
+          
+          # Layer generated resources over top
+          if [ -d "source-repo/src/generated/resources" ]; then
+            rsync -a source-repo/src/generated/resources/ staging/${{ inputs.mod-id }}/
+          fi
+          
+          # Nuke the old folder in the target repo to prevent deleted files from lingering
+          rm -rf target-repo/${{ inputs.mod-id }}
+          
+          # Move the merged staging folder into the target repo
+          mv staging/${{ inputs.mod-id }} target-repo/
+
+      - name: Generate Tag Index
+        run: |
+          cd target-repo/${{ inputs.mod-id }}/reports
+          
+          # Only run if the tags directory exists
+          if [ -d "tags" ]; then
+            find tags -type f -name "*.json" | while read -r file; do
+              # Remove 'tags/' prefix
+              rel_path=${file#tags/}
+              # Remove '.json' suffix
+              rel_path=${rel_path%.json}
+              # Replace the first slash with a colon (e.g. minecraft/block -> minecraft:block)
+              echo "${rel_path/\//:}"
+            done | jq -R -s 'split("\n")[:-1]' > tags.json
+          fi
+          
+          cd ../../..
+
+      - name: Commit and Push
+        run: |
+          cd target-repo
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          git add ${{ inputs.mod-id }}/
+          
+          # Check if there are actually any changes before trying to commit
+          if git diff --staged --quiet; then
+            echo "No changes detected. Skipping commit."
+          else
+            git commit -m "chore: sync ${{ inputs.mod-id }} resources from source"
+            git push
+          fi

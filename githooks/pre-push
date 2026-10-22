@@ -1,0 +1,17 @@
+#!/bin/sh
+# Prevent direct pushes to release branches (main and version branches)
+
+while read -r local_ref local_oid remote_ref remote_oid
+do
+    if [ "$remote_ref" = "refs/heads/main" ] || [ "$remote_ref" = "refs/heads/1.21.1" ]; then
+        echo "=========================================================="
+        echo " [BLOCKED] Direct push to release branch is forbidden!"
+        echo " Please create a feature branch and submit a Pull Request:"
+        echo "   git checkout -b feature/your-feature"
+        echo "   git push origin feature/your-feature"
+        echo "=========================================================="
+        exit 1
+    fi
+done
+
+exit 0

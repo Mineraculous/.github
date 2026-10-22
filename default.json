@@ -1,0 +1,86 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "dependencyDashboard": true,
+  "packageRules": [
+    {
+      "description": "Disable Gradle manager dependency updates by default; Minecraft mods are tracked via mod_deps.json and custom updater",
+      "matchManagers": [
+        "gradle"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Lock Java JDK version to 21 for Minecraft 1.21.1",
+      "matchPackageNames": [
+        "java-jdk",
+        "java"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "NeoForge Maven registry",
+      "registryUrls": [
+        "https://maven.neoforged.net/releases"
+      ],
+      "matchPackageNames": [
+        "/^net\\.neoforged/"
+      ]
+    },
+    {
+      "description": "Constrain NeoForge updates strictly to 21.1.x for Minecraft 1.21.1",
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchPackageNames": [
+        "/^net\\.neoforged:neoforge/"
+      ],
+      "allowedVersions": "/^21\\.1\\./",
+      "groupName": "NeoForge",
+      "enabled": true
+    },
+    {
+      "description": "ModDevGradle toolchain updates",
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchPackageNames": [
+        "/^net\\.neoforged(\\.moddev|:moddev)/"
+      ],
+      "groupName": "ModDevGradle",
+      "enabled": true
+    },
+    {
+      "description": "Gradle plugins (Immaculate & Foojay)",
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchPackageNames": [
+        "dev.lukebemish.immaculate",
+        "org.gradle.toolchains.foojay-resolver-convention"
+      ],
+      "enabled": true
+    },
+    {
+      "description": "Voice Chat API (Minecraft-version independent)",
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchPackageNames": [
+        "/^de\\.maxhenkel\\.voicechat:voicechat-api/"
+      ],
+      "groupName": "Voice Chat API",
+      "enabled": true
+    },
+    {
+      "description": "Group GitHub Actions updates",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "GitHub Actions",
+      "automerge": false
+    }
+  ]
+}

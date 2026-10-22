@@ -16,7 +16,7 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-USER_AGENT = "Mineraculous/DependencyUpdater (https://github.com/Mineraculous)"
+USER_AGENT = "Mineraculous/DependencyUpdater (https://github.com/Mineraculous/.github)"
 
 
 def read_gradle_properties(path: Path) -> dict[str, str]:

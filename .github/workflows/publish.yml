@@ -1,0 +1,147 @@
+name: publish
+
+on:
+  workflow_call:
+    inputs:
+      title:
+        description: "Release title"
+        required: true
+        type: string
+      last_version:
+        description: "Previous mod version"
+        required: true
+        type: string
+      version:
+        description: "New mod version"
+        required: true
+        type: string
+      game_versions:
+        description: "Supported Minecraft versions"
+        required: true
+        type: string
+      artifact-name:
+        description: "Name of the build artifact"
+        required: false
+        type: string
+        default: "Mineraculous"
+      modrinth-id:
+        description: "Modrinth project ID/slug"
+        required: true
+        type: string
+      curseforge-id:
+        description: "CurseForge project ID"
+        required: true
+        type: string
+    secrets:
+      MODRINTH_TOKEN:
+        required: true
+      CURSEFORGE_TOKEN:
+        required: true
+      MINERACULOUS_USERNAME:
+        required: false
+      MINERACULOUS_PASSWORD:
+        required: false
+
+jobs:
+  call-build-workflow:
+    permissions:
+      contents: read
+    uses: Mineraculous/.github/.github/workflows/build.yml@main
+    secrets: inherit
+    with:
+      artifact-name: ${{ inputs.artifact-name }}
+      upload-artifact: true
+
+  publish:
+    needs: call-build-workflow
+    runs-on: ubuntu-latest
+    env:
+      changelog: '**Full Changelog**: ${{ github.server_url }}/${{ github.repository }}/compare/'
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        website: [ modrinth, curseforge, github_release ]
+    name: ${{ matrix.website }}
+
+    steps:
+      - name: Download mod artifact
+        uses: actions/download-artifact@v8
+        continue-on-error: false
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: build/libs
+
+      - name: Checking and setting the environment
+        id: mod_env
+        continue-on-error: true
+        run: |
+          export name=$(ls build/libs/ | grep shadow -v | grep sources -v | grep javadoc -v | awk -F.jar '{print $1}')
+          export mod_name=$(echo $name | awk -F- '{print $1}')
+          export mc_version=$(echo $name | awk -F- '{print $3}')
+          export mod_version=$(echo $name | awk -F- '{print $4}')
+          echo "name=$name" >> $GITHUB_OUTPUT
+          echo "mod_name=$mod_name" >> $GITHUB_OUTPUT
+          echo "mc_version=$mc_version" >> $GITHUB_OUTPUT
+          echo "mod_version=$mod_version" >> $GITHUB_OUTPUT
+
+      - name: Publish Github Release
+        uses: Kir-Antipov/mc-publish@v3.3
+        continue-on-error: true
+        if: (matrix.website == 'github_release')
+        with:
+          files: |
+            build/libs/!(*-@(dev|sources|javadoc)).jar
+            build/libs/*-@(dev|sources|javadoc).jar
+          name: ${{ inputs.title }}
+          version: ${{ steps.mod_env.outputs.mod_version }}
+          changelog: ${{ env.changelog }}${{ inputs.last_version }}...${{ inputs.version }}
+          github-tag: ${{ steps.mod_env.outputs.mod_version }}
+          github-generate-changelog: true
+          java: Java 21
+          game-versions: |
+            ${{ inputs.game_versions }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish Modrinth Release
+        uses: Kir-Antipov/mc-publish@v3.3
+        continue-on-error: true
+        if: (matrix.website == 'modrinth')
+        with:
+          files: |
+            build/libs/!(*-@(dev|sources|javadoc)).jar
+            build/libs/*-@(dev|sources|javadoc).jar
+          name: ${{ inputs.title }}
+          version: ${{ steps.mod_env.outputs.mod_version }}
+          changelog: ${{ env.changelog }}${{ inputs.last_version }}...${{ inputs.version }}
+          java: Java 21
+          game-versions: |
+            ${{ inputs.game_versions }}
+          modrinth-id: ${{ inputs.modrinth-id }}
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+
+      - name: Publish Curseforge Release
+        uses: Kir-Antipov/mc-publish@v3.3
+        continue-on-error: true
+        if: (matrix.website == 'curseforge')
+        with:
+          files: |
+            build/libs/!(*-@(dev|sources|javadoc)).jar
+            build/libs/*-@(dev|sources|javadocs).jar
+          name: ${{ inputs.title }}
+          version: ${{ steps.mod_env.outputs.mod_version }}
+          changelog: ${{ env.changelog }}${{ inputs.last_version }}...${{ inputs.version }}
+          java: Java 21
+          game-versions: |
+            ${{ inputs.game_versions }}
+          curseforge-id: ${{ inputs.curseforge-id }}
+          curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
+
+  cleanup:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete artifact
+        uses: geekyeggo/delete-artifact@v6
+        with:
+          name: ${{ inputs.artifact-name }}

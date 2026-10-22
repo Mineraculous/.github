@@ -1,0 +1,736 @@
+// ==============================================================================
+// Mineraculous Common Build Logic & Conventions
+// Shared across Mineraculous core mod, expansions, and developer templates.
+// ==============================================================================
+
+import java.io.FileFilter
+import java.util.regex.Matcher
+import java.util.regex.Pattern
+
+// ------------------------------------------------------------------------------
+// Gradle Wrapper & Base Archive Configuration
+// ------------------------------------------------------------------------------
+tasks.named('wrapper', Wrapper).configure {
+	distributionType = Wrapper.DistributionType.BIN
+}
+
+base {
+	archivesName = "${mod_id}-${minecraft_version}"
+}
+
+// ------------------------------------------------------------------------------
+// Java Toolchain & Standard Jars
+// ------------------------------------------------------------------------------
+java {
+	toolchain.languageVersion = JavaLanguageVersion.of(java_version)
+	withSourcesJar()
+	withJavadocJar()
+}
+
+// ------------------------------------------------------------------------------
+// Configurations
+// ------------------------------------------------------------------------------
+configurations {
+	runtimeClasspath.extendsFrom localRuntime
+}
+
+// ------------------------------------------------------------------------------
+// Standard Maven Repositories
+// ------------------------------------------------------------------------------
+repositories {
+	mavenLocal()
+	exclusiveContent {
+		forRepository {
+			maven {
+				name = 'Modrinth'
+				url = 'https://api.modrinth.com/maven'
+			}
+		}
+		filter { includeGroupAndSubgroups "maven.modrinth" }
+	}
+	exclusiveContent {
+		forRepository {
+			maven {
+				name = 'JEI'
+				url = 'https://maven.blamejared.com/'
+			}
+		}
+		filter { includeGroupAndSubgroups "mezz.jei" }
+	}
+	exclusiveContent {
+		forRepository {
+			maven {
+				name = 'GeckoLib'
+				url = 'https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/'
+			}
+		}
+		filter {
+			includeGroupAndSubgroups 'software.bernie.geckolib'
+			includeGroupAndSubgroups 'com.eliotlash.mclib'
+		}
+	}
+	exclusiveContent {
+		forRepository {
+			maven {
+				name = 'SmartBrainLib'
+				url = "https://dl.cloudsmith.io/public/tslat/sbl/maven/"
+			}
+		}
+		filter { includeGroupAndSubgroups 'net.tslat.smartbrainlib' }
+	}
+	exclusiveContent {
+		forRepository {
+			maven {
+				name = 'Curios'
+				url = "https://maven.theillusivec4.top/"
+			}
+		}
+		filter { includeGroupAndSubgroups 'top.theillusivec4.curios' }
+	}
+	exclusiveContent {
+		forRepository {
+			maven {
+				name = 'Modonomicon'
+				url = "https://dl.cloudsmith.io/public/klikli-dev/mods/maven/"
+			}
+		}
+		filter { includeGroupAndSubgroups "com.klikli_dev" }
+	}
+	exclusiveContent {
+		forRepository {
+			maven {
+				name = 'Player Animation Library'
+				url = "https://repo.redlance.org/public"
+			}
+		}
+		filter { includeGroupAndSubgroups "com.zigythebird" }
+	}
+	exclusiveContent {
+		forRepository {
+			maven {
+				name = 'Voice Chat API'
+				url = 'https://maven.maxhenkel.de/repository/public'
+			}
+		}
+		filter { includeGroupAndSubgroups "de.maxhenkel.voicechat" }
+	}
+	maven {
+		name = 'TommyLib, Sherds API, and Mineraculous'
+		url = 'https://maven.thomasglasser.dev/releases'
+		content {
+			includeGroupAndSubgroups("dev.thomasglasser.tommylib")
+			includeGroupAndSubgroups("dev.thomasglasser.sherdsapi")
+			includeGroupAndSubgroups("dev.thomasglasser.mineraculous")
+		}
+	}
+	maven {
+		name = 'Mineraculous Betas'
+		url = 'https://maven.thomasglasser.dev/betas'
+		credentials {
+			username = project.findProperty("MINERACULOUS_USERNAME") ?: System.getenv("MINERACULOUS_USERNAME")
+			password = project.findProperty("MINERACULOUS_PASSWORD") ?: System.getenv("MINERACULOUS_PASSWORD")
+		}
+		content {
+			includeGroupAndSubgroups("dev.thomasglasser.mineraculous")
+		}
+	}
+	maven {
+		name = 'NeoForge'
+		url = 'https://maven.neoforged.net/releases'
+	}
+	maven {
+		name = 'Mojang Meta'
+		url = 'https://maven.neoforged.net/mojang-meta'
+	}
+	mavenCentral()
+}
+
+// ------------------------------------------------------------------------------
+// Generated Resources
+// ------------------------------------------------------------------------------
+sourceSets.main.resources { srcDir 'src/generated/resources' }
+
+// ------------------------------------------------------------------------------
+// Version Range Calculations for NeoForge & Dependencies
+// ------------------------------------------------------------------------------
+ext.getMajorVersionRange = { String version ->
+	def prefix = version.contains('-') ? version.substring(0, version.indexOf('-') + 1) : ""
+	def clean = prefix ? version.substring(prefix.length()) : version
+	def major = clean.takeBefore('.') as int
+	def next = prefix ? "${prefix}${major + 1}" : "${major + 1}"
+	return "[${version},${next})".toString()
+}
+
+ext.getMinorVersionRange = { String version ->
+	def major = version.takeBefore('.')
+	def minor = (version.takeAfter('.').takeBefore('.') ?: version.takeAfter('.')) as int
+	return "[${version},${major}.${minor + 1})".toString()
+}
+
+ext.getMineraculousVersionRange = { String version ->
+	if (!version.contains('-beta'))
+		return ext.getMajorVersionRange(version)
+	def suffix = version.indexOf('beta') + 4 as int
+	def base = version.substring(0, suffix)
+	def beta = version.substring(suffix) as int
+	return "[${version},${base}${beta + 1})".toString()
+}
+
+// ------------------------------------------------------------------------------
+// NeoForge ModDevGradle Configuration
+// ------------------------------------------------------------------------------
+neoForge {
+	version = "${neoforge_version}"
+
+	def interfaceInjections = file("src/main/resources/META-INF/interface_injections.json")
+	if (interfaceInjections.exists()) {
+		interfaceInjectionData.from interfaceInjections
+	}
+
+	parchment {
+		minecraftVersion = parchment_minecraft_version
+		mappingsVersion = parchment_version
+	}
+
+	runs {
+		configureEach {
+			systemProperties.put('terminal.ansi', 'true')
+		}
+		client {
+			client()
+			ideName = "Client"
+			gameDirectory = project.layout.projectDirectory.dir('runs/client')
+		}
+		client_alt {
+			client()
+			ideName = "Client 2"
+			gameDirectory = project.layout.projectDirectory.dir('runs/client_alt')
+			programArguments.addAll "--username", "DevAlt"
+		}
+		client_alt_alt {
+			client()
+			ideName = "Client 3"
+			gameDirectory = project.layout.projectDirectory.dir('runs/client_alt_alt')
+			programArguments.addAll "--username", "DevAltAlt"
+		}
+		auth_client {
+			client()
+			ideName = "Auth Client"
+			devLogin = true
+			gameDirectory = project.layout.projectDirectory.dir('runs/auth_client')
+		}
+		server {
+			server()
+			ideName = "Server"
+			gameDirectory = project.layout.projectDirectory.dir('runs/server')
+		}
+		data {
+			data()
+			ideName = "Data Generation"
+			gameDirectory = project.layout.projectDirectory.dir('runs/data')
+			programArguments.addAll '--mod', project.mod_id, '--all', '--output', file('src/generated/resources/').getAbsolutePath(), '--existing', file('src/main/resources/').getAbsolutePath()
+		}
+	}
+
+	mods {
+		"${mod_id}" {
+			sourceSet sourceSets.main
+		}
+	}
+}
+
+// ------------------------------------------------------------------------------
+// Mod Metadata Expansion & Task Registration
+// ------------------------------------------------------------------------------
+ext.registerModMetadata = { Map extraProps = [:] ->
+	def replaceProperties = [
+		version: project.version,
+		group: project.group,
+		minecraft_version: minecraft_version,
+		minecraft_version_range: "[${minecraft_version},${project.findProperty('next_minecraft_version') ?: '1.21.2'})".toString(),
+		next_minecraft_version: project.findProperty('next_minecraft_version') ?: '1.21.2',
+		mod_name: mod_name,
+		mod_author: mod_author,
+		mod_id: mod_id,
+		license: license,
+		description: project.description,
+		neoforge_version: neoforge_version,
+		neoforge_version_range: ext.getMinorVersionRange(neoforge_version),
+		major_fml_version: major_fml_version,
+		java_version: java_version,
+		icon: project.findProperty('icon') ?: 'icon.png',
+		github_name: project.findProperty('github_name') ?: project.name,
+	]
+	if (project.hasProperty('tommylib_version')) {
+		replaceProperties.tommylib_version = tommylib_version
+		replaceProperties.tommylib_version_range = ext.getMajorVersionRange(tommylib_version)
+	}
+	if (project.hasProperty('mineraculous_version')) {
+		replaceProperties.mineraculous_version = mineraculous_version
+		replaceProperties.mineraculous_version_range = ext.getMineraculousVersionRange(mineraculous_version)
+	}
+	if (project.hasProperty('curios_version')) replaceProperties.curios_version = curios_version
+	if (project.hasProperty('smartbrainlib_version')) replaceProperties.smartbrainlib_version = smartbrainlib_version
+	if (project.hasProperty('modonomicon_version')) replaceProperties.modonomicon_version = modonomicon_version
+	if (project.hasProperty('jade_version')) replaceProperties.jade_version = jade_version
+	if (project.hasProperty('jei_version')) replaceProperties.jei_version = jei_version
+
+	replaceProperties.putAll(extraProps)
+
+	def generateModMetadata = tasks.register("generateModMetadata", ProcessResources) {
+		inputs.properties replaceProperties
+		expand replaceProperties
+		from "src/main/templates"
+		into "build/generated/sources/modMetadata"
+	}
+
+	sourceSets.main.resources.srcDir generateModMetadata
+	tasks.processResources.dependsOn generateModMetadata
+	return generateModMetadata
+}
+
+// ------------------------------------------------------------------------------
+// Git Hooks Automation (Block pushes to protected release branches)
+// ------------------------------------------------------------------------------
+def hasGit = layout.projectDirectory.dir('.git').asFile.exists()
+
+tasks.register('setupGitHooks') {
+	description = 'Automatically installs pre-push hook into .git/hooks to protect release branches'
+	group = 'verification'
+	enabled = hasGit
+	doLast {
+		def gitDir = layout.projectDirectory.dir('.git').asFile
+		if (!gitDir.exists() || !gitDir.isDirectory()) {
+			return
+		}
+
+		// Ensure core.hooksPath is unset so git uses standard .git/hooks
+		providers.exec {
+			commandLine 'git', 'config', '--unset', 'core.hooksPath'
+			ignoreExitValue = true
+		}.result.get()
+
+		def hooksDir = new File(gitDir, 'hooks')
+		if (!hooksDir.exists()) {
+			hooksDir.mkdirs()
+		}
+
+		def hookFile = new File(hooksDir, 'pre-push')
+		hookFile.text = '''#!/bin/sh
+# Prevent direct pushes to release branches (main and version branches)
+
+while read -r local_ref local_oid remote_ref remote_oid
+do
+    if [ "$remote_ref" = "refs/heads/main" ] || [ "$remote_ref" = "refs/heads/1.21.1" ]; then
+        echo "=========================================================="
+        echo " [BLOCKED] Direct push to release branch is forbidden!"
+        echo " Please create a feature branch and submit a Pull Request:"
+        echo "   git checkout -b feature/your-feature"
+        echo "   git push origin feature/your-feature"
+        echo "=========================================================="
+        exit 1
+    fi
+done
+
+exit 0
+'''
+		hookFile.setExecutable(true, false)
+	}
+}
+
+tasks.named('compileJava') {
+	dependsOn 'setupGitHooks'
+}
+
+// ------------------------------------------------------------------------------
+// Automated package-info.java Generation (NonnullByDefault)
+// ------------------------------------------------------------------------------
+if (file('src/main/java').exists()) {
+	def generatePackageInfos = tasks.register('generatePackageInfos') {
+		File srcDir = file('src/main/java')
+		File outDir = layout.buildDirectory.dir("generated/sources/packageInfo/main/java").get().asFile
+		inputs.dir(srcDir)
+		outputs.dir(outDir)
+		doLast {
+			srcDir.eachFileRecurse { file ->
+				if (file.isDirectory()) {
+					def javaFiles = file.listFiles({ f -> f.name.endsWith('.java') } as FileFilter)
+					if (javaFiles != null && javaFiles.length > 0) {
+						String relPath = srcDir.toPath().relativize(file.toPath()).toString().replace('\\', '/')
+						String pkgName = relPath.replace('/', '.')
+						File pkgInfo = new File(outDir, relPath + '/package-info.java')
+						pkgInfo.parentFile.mkdirs()
+						pkgInfo.text = """@ParametersAreNonnullByDefault
+@MethodsReturnNonnullByDefault
+package ${pkgName};
+
+import javax.annotation.ParametersAreNonnullByDefault;
+import net.minecraft.MethodsReturnNonnullByDefault;
+"""
+					}
+				}
+			}
+		}
+	}
+
+	sourceSets.main.java.srcDir generatePackageInfos
+}
+
+// ------------------------------------------------------------------------------
+// Code Formatting (Immaculate & Spotless)
+// ------------------------------------------------------------------------------
+compileJava.dependsOn immaculateApply
+compileJava.finalizedBy immaculateCheck
+tasks.named('check').configure {
+	dependsOn immaculateCheck
+}
+
+immaculate {
+	workflows.register('java') {
+		files.from rootProject.fileTree("src", {
+			include "**/*.java"
+		})
+		noTabs()
+		google {
+			fixImports()
+		}
+		toggleOff = 'spotless:off'
+		toggleOn = 'spotless:on'
+
+		def configFile = rootProject.file('codeformat/formatter-config.xml')
+		if (configFile.exists()) {
+			eclipse {
+				version '3.37.0'
+				config = configFile
+			}
+		}
+
+		custom 'canonicalizeNullable', { String fileContents ->
+			fileContents = fileContents.replace('javax.annotation.Nullable', 'org.jetbrains.annotations.Nullable')
+			fileContents = fileContents.replace('jakarta.annotation.Nullable', 'org.jetbrains.annotations.Nullable')
+			fileContents = fileContents.replace('edu.umd.cs.findbugs.annotations.Nullable', 'org.jetbrains.annotations.Nullable')
+			fileContents = fileContents.replace('org.checkerframework.checker.nullness.qual.Nullable', 'org.jetbrains.annotations.Nullable')
+			fileContents = fileContents.replace('android.annotation.Nullable', 'org.jetbrains.annotations.Nullable')
+			fileContents = fileContents.replace('com.google.errorprone.annotations.Nullable', 'org.jetbrains.annotations.Nullable')
+			return fileContents
+		}
+
+		custom 'noWildcardImports', { String fileContents ->
+			if (Pattern.compile('(?m)^\\s*import\\s+(?:static\\s+)?[^;\\r\\n]+\\*;').matcher(fileContents).find()) {
+				throw new GradleException('No wildcard imports are allowed! Explicitly import each class.')
+			}
+		}
+
+		custom 'noStaticImports', { String fileContents ->
+			if (Pattern.compile('(?m)^\\s*import\\s+static\\s+').matcher(fileContents).find()) {
+				throw new GradleException('Static imports are disallowed. Use class qualification (e.g. Collections.emptyList()).')
+			}
+		}
+
+		custom 'noNotNull', { String fileContents ->
+			if (fileContents.contains('@NotNull') || fileContents.contains('@Nonnull')) {
+				throw new GradleException('@NotNull and @Nonnull are disallowed. Parameters and return types are non-null by default via package-info.java.')
+			}
+		}
+
+		custom 'noVar', { String fileContents ->
+			if (Pattern.compile('(?m)^\\s*(?:final\\s+)?var\\s+[a-zA-Z_$][a-zA-Z0-9_$]*\\s*=').matcher(fileContents).find()) {
+				throw new GradleException("Do not use the 'var' keyword. Explicitly define variable types.")
+			}
+		}
+
+		custom 'singleLineParameters', { String fileContents ->
+			Pattern recordPattern = Pattern.compile('(?s)(\\brecord\\s+[A-Za-z0-9_$]+(?:<[^>{}]+>)?\\s*\\()((?:[^()]|\\([^()]*\\))*?)(\\)\\s*(?:implements\\s+[^{]+)?\\{)')
+			fileContents = recordPattern.matcher(fileContents).replaceAll { Matcher m ->
+				String params = m.group(2).replaceAll('\\s*\\r?\\n\\s*', ' ').trim()
+				return Matcher.quoteReplacement(m.group(1) + params + m.group(3))
+			}
+
+			Pattern methodPattern = Pattern.compile('(?s)(^[ \\t]*(?:(?:/\\*\\*(?:[^*]|\\*(?!/))*\\*/|(?:///[^\\r\\n]*\\r?\\n[ \\t]*)+)\\r?\\n[ \\t]*)?(?:@[A-Za-z0-9_.]+(?:\\((?:[^()]|\\([^()]*\\))*\\))?[ \\t]*(?:\\r?\\n[ \\t]*)?)*(?:(?:public|protected|private|static|final|abstract|synchronized|native|default)\\s+)+(?!class\\b|interface\\b|enum\\b|record\\b|@interface\\b)(?:<[^>{}]+>\\s+)?(?:(?:@[A-Za-z0-9_.]+(?:\\((?:[^()]|\\([^()]*\\))*\\))?\\s+)|[A-Za-z0-9_.<>\\[\\], \\t]+?\\s+)*(?:[A-Za-z0-9_$]+\\s*\\())((?:[^()]|\\([^()]*\\))*?)(\\)\\s*(?:throws\\s+[^{;]+)?(?:\\{|;))', Pattern.MULTILINE)
+			fileContents = methodPattern.matcher(fileContents).replaceAll { Matcher m ->
+				String params = m.group(2).replaceAll('\\s*\\r?\\n\\s*', ' ').trim()
+				return Matcher.quoteReplacement(m.group(1) + params + m.group(3))
+			}
+
+			return fileContents
+		}
+
+		custom 'noBlankLinesAfterClassDeclarations', { String fileContents ->
+			Pattern pattern = Pattern.compile('(?s)(\\b(?:class|interface|enum|record|@interface)\\b[^{;]*?\\{(?:[ \\t]*//[^\\r\\n]*)?)[ \\t]*\\r?\\n(?:[ \\t]*\\r?\\n)+')
+			return pattern.matcher(fileContents).replaceAll('$1\n')
+		}
+
+		custom 'blankLinesBeforeMethods', { String fileContents ->
+			Pattern pattern = Pattern.compile('(?m)^([ \\t]*(?:[^\\r\\n;]+;|\\})(?:[ \\t]*//[^\\r\\n]*)?)\\r?\\n([ \\t]*(?:(?:/\\*\\*(?:[^*]|\\*(?!/))*\\*/|(?:///[^\\r\\n]*\\r?\\n[ \\t]*)+)\\r?\\n[ \\t]*)?(?:@[A-Za-z0-9_.]+(?:\\((?:[^()]|\\([^()]*\\))*\\))?[ \\t]*(?:\\r?\\n[ \\t]*)?)*(?:(?:public|protected|private|static|final|abstract|synchronized|native|default)\\s+)+(?!class\\b|interface\\b|enum\\b|record\\b|@interface\\b)(?:<[^>{}]+>\\s+)?(?:(?:@[A-Za-z0-9_.]+(?:\\((?:[^()]|\\([^()]*\\))*\\))?\\s+)|[A-Za-z0-9_.<>\\[\\], \\t]+?\\s+)*(?:[A-Za-z0-9_]+\\s*\\(|[A-Za-z0-9_]+\\s*\\{))')
+			return pattern.matcher(fileContents).replaceAll('$1\n\n$2')
+		}
+
+		custom 'blankLinesBeforeMemberTypes', { String fileContents ->
+			Pattern pattern = Pattern.compile('(?m)^([ \\t]*(?:[^\\r\\n;]+;|\\})(?:[ \\t]*//[^\\r\\n]*)?)\\r?\\n([ ]{4}(?:(?:/\\*\\*(?:[^*]|\\*(?!/))*\\*/|(?:///[^\\r\\n]*\\r?\\n[ \\t]*)+)\\r?\\n[ ]{4})?(?:@[A-Za-z0-9_.]+(?:\\((?:[^()]|\\([^()]*\\))*\\))?\\s+)*(?:(?:public|protected|private|static|final|abstract|sealed|non-sealed)\\s+)*(?:class|interface|enum|record|@interface)\\s+[A-Za-z0-9_]+|[ ]{8,}(?:(?:/\\*\\*(?:[^*]|\\*(?!/))*\\*/|(?:///[^\\r\\n]*\\r?\\n[ \\t]*)+)\\r?\\n[ ]{8,})?(?:@[A-Za-z0-9_.]+(?:\\((?:[^()]|\\([^()]*\\))*\\))?\\s+)*(?:(?:public|protected|private|static|final|abstract|sealed|non-sealed)\\s+)*(?:public|protected|private)\\s+(?:(?:public|protected|private|static|final|abstract|sealed|non-sealed)\\s+)*(?:class|interface|enum|record|@interface)\\s+[A-Za-z0-9_]+)')
+			return pattern.matcher(fileContents).replaceAll('$1\n\n$2')
+		}
+
+		custom 'trimTrailingWhitespace', { String fileContents ->
+			return fileContents.replaceAll('(?m)[ \t]+$', '')
+		}
+
+		custom 'endWithNewline', { String fileContents ->
+			return fileContents.stripTrailing() + '\n'
+		}
+	}
+
+	workflows.register('gradle') {
+		files.from rootProject.fileTree(projectDir, {
+			include '**/*.gradle'
+			include '**/*.gradle.kts'
+			exclude 'build/**', '.gradle/**', 'src/generated/**'
+		})
+		custom 'trimTrailingWhitespace', { String fileContents ->
+			return fileContents.replaceAll('(?m)[ \t]+$', '')
+		}
+		custom 'endWithNewline', { String fileContents ->
+			return fileContents.stripTrailing() + '\n'
+		}
+	}
+
+	workflows.register('json') {
+		files.from rootProject.fileTree("src/main/resources", {
+			include "**/*.json"
+		})
+		custom 'trimTrailingWhitespace', { String fileContents ->
+			return fileContents.replaceAll('(?m)[ \t]+$', '')
+		}
+		custom 'endWithNewline', { String fileContents ->
+			return fileContents.stripTrailing() + '\n'
+		}
+	}
+}
+
+// ------------------------------------------------------------------------------
+// Javadoc & IDE Configuration
+// ------------------------------------------------------------------------------
+javadoc {
+	failOnError = false
+	options {
+		tags = [
+				'apiNote:a:API Note:'
+		]
+	}
+}
+
+idea {
+	module {
+		downloadSources = true
+		downloadJavadoc = true
+	}
+}
+
+// ------------------------------------------------------------------------------
+// Manifest & Outgoing Capabilities
+// ------------------------------------------------------------------------------
+jar {
+	manifest {
+		attributes([
+				'Specification-Title'   : mod_name,
+				'Specification-Vendor'  : mod_author,
+				'Specification-Version' : project.jar.archiveVersion,
+				'Implementation-Title'  : project.name,
+				'Implementation-Version': project.jar.archiveVersion,
+				'Implementation-Vendor' : mod_author,
+				'Built-On-Minecraft'    : minecraft_version
+		])
+	}
+}
+
+def isBetaBuild = project.version.toString().contains("beta")
+
+tasks.withType(GenerateModuleMetadata).configureEach {
+	enabled = !isBetaBuild
+}
+
+if (!isBetaBuild) {
+	['apiElements', 'runtimeElements', 'sourcesElements', 'javadocElements'].each { variant ->
+		configurations."$variant".outgoing {
+			capability("$group:${base.archivesName.get()}:$version")
+			capability("$group:$mod_id-${project.name}-${minecraft_version}:$version")
+			capability("$group:$mod_id:$version")
+		}
+		publishing.publications.configureEach {
+			suppressPomMetadataWarningsFor(variant)
+		}
+	}
+}
+
+signing {
+	useGpgCmd()
+	sign publishing.publications.matching { it.name == 'mavenJava' }
+}
+
+// ------------------------------------------------------------------------------
+// Beta Tester Management & Artifact Publishing
+// ------------------------------------------------------------------------------
+ext.getBetaTesters = {
+	def testers = []
+	try {
+		def gistUrl = new URL('https://gist.githubusercontent.com/thomasglasser/aa8eb933847685b93d8f99a59f07b62e/raw/mineraculous_special_players.txt')
+		gistUrl.eachLine { line ->
+			if (!line.startsWith("//") && line.contains("beta")) {
+				def parts = line.split("\\|")
+				if (parts.length > 0) {
+					testers.add(parts[0].trim())
+				}
+			}
+		}
+	} catch (Exception e) {
+		println "WARNING: Failed to fetch beta testers from Gist: ${e.message}"
+	}
+	return testers
+}
+
+ext.getBetaTesterUuid = { String name ->
+	try {
+		def gistUrl = new URL('https://gist.githubusercontent.com/thomasglasser/aa8eb933847685b93d8f99a59f07b62e/raw/mineraculous_special_players.txt')
+		for (String line : gistUrl.readLines()) {
+			if (!line.startsWith("//") && line.contains("beta")) {
+				def parts = line.split("\\|")
+				if (parts.length > 1 && parts[0].trim().equals(name)) {
+					return parts[1].trim()
+				}
+			}
+		}
+	} catch (Exception e) {
+		println "WARNING: Failed to fetch beta tester UUID for ${name}: ${e.message}"
+	}
+	return ""
+}
+
+ext.registerBetaJar = { String testerName ->
+	String testerUuid = ext.getBetaTesterUuid(testerName)
+	if (!tasks.names.contains("jarBeta${testerName}")) {
+		File generatedMetaDir = layout.buildDirectory.dir("generated/beta/${testerName}/META-INF").get().asFile
+		File betaDir = layout.buildDirectory.dir("generated/beta/${testerName}").get().asFile
+		String modVersion = project.version.toString()
+		String modGroup = "${project.group}.${testerName}".toString()
+
+		tasks.register("jarBeta${testerName}", Jar) { jarTask ->
+			jarTask.destinationDirectory = layout.buildDirectory.dir("libs/beta/${testerName}")
+			jarTask.archiveBaseName = base.archivesName.get()
+			jarTask.archiveVersion = project.jar.archiveVersion
+			jarTask.from sourceSets.main.output
+
+			jarTask.doFirst {
+				File propFile = new File(generatedMetaDir, "mineraculous_beta.properties")
+				propFile.parentFile.mkdirs()
+				propFile.text = "tester=${testerName}\nuuid=${testerUuid}\nversion=${modVersion}\ngroup=${modGroup}\n"
+			}
+			jarTask.from(betaDir)
+
+			jarTask.manifest {
+				attributes([
+						'Specification-Title'   : mod_name,
+						'Specification-Vendor'  : mod_author,
+						'Specification-Version' : project.jar.archiveVersion,
+						'Implementation-Title'  : project.name,
+						'Implementation-Version': project.jar.archiveVersion,
+						'Implementation-Vendor' : mod_author,
+						'Built-On-Minecraft'    : minecraft_version,
+						'Beta-Tester'           : testerName,
+						'Beta-Tester-UUID'      : testerUuid
+				])
+			}
+		}
+	}
+}
+
+// ------------------------------------------------------------------------------
+// Standard Maven Publishing
+// ------------------------------------------------------------------------------
+publishing {
+	publications {
+		if (isBetaBuild) {
+			ext.getBetaTesters().each { testerName ->
+				ext.registerBetaJar(testerName)
+
+				register("mavenBeta${testerName}", MavenPublication) {
+					groupId = "${project.group}.${testerName}"
+					artifactId = base.archivesName.get()
+					version = "${project.version}"
+					from components.java
+
+					artifacts.removeIf { it.classifier == null && (it.extension == 'jar' || (it.file != null && it.file.name.endsWith('.jar'))) }
+					artifact(tasks.named("jarBeta${testerName}"))
+
+					pom {
+						name = project.mod_name
+						description = project.description
+						def repoName = project.findProperty('github_name') ?: project.name
+						url = "https://github.com/thomasglasser/${repoName}/wiki"
+						licenses {
+							license {
+								name = project.license
+							}
+						}
+						developers {
+							developer {
+								id = project.mod_author
+								name = project.mod_author
+							}
+						}
+						issueManagement {
+							system = 'GitHub'
+							url = "https://github.com/thomasglasser/${repoName}/issues"
+						}
+						scm {
+							connection = "scm:git:git://github.com/thomasglasser/${repoName}.git"
+							developerConnection = "scm:git:ssh://github.com:thomasglasser/${repoName}.git"
+							url = "https://github.com/thomasglasser/${repoName}/tree/${minecraft_version}"
+						}
+					}
+				}
+			}
+		} else {
+			register('mavenJava', MavenPublication) {
+				artifactId = base.archivesName.get()
+				from components.java
+
+				pom {
+					name = project.mod_name
+					description = project.description
+					def repoName = project.findProperty('github_name') ?: project.name
+					url = "https://github.com/thomasglasser/${repoName}/wiki"
+					licenses {
+						license {
+							name = project.license
+						}
+					}
+					developers {
+						developer {
+							id = project.mod_author
+							name = project.mod_author
+						}
+					}
+					issueManagement {
+						system = 'GitHub'
+						url = "https://github.com/thomasglasser/${repoName}/issues"
+					}
+					scm {
+						connection = "scm:git:git://github.com/thomasglasser/${repoName}.git"
+						developerConnection = "scm:git:ssh://github.com:thomasglasser/${repoName}.git"
+						url = "https://github.com/thomasglasser/${repoName}/tree/${minecraft_version}"
+					}
+				}
+			}
+		}
+	}
+
+	repositories {
+		maven {
+			name = "Reposilite"
+			url = isBetaBuild ? "https://maven.thomasglasser.dev/betas" : "https://maven.thomasglasser.dev/releases"
+			credentials {
+				username = project.findProperty("REPOSILITE_USERNAME") ?: System.getenv("REPOSILITE_USERNAME")
+				password = project.findProperty("REPOSILITE_PASSWORD") ?: System.getenv("REPOSILITE_PASSWORD")
+			}
+		}
+	}
+}

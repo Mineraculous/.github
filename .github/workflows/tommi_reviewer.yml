@@ -1,0 +1,37 @@
+name: T.O.M.M.I. AI Code Reviewer
+
+on:
+  workflow_call:
+    secrets:
+      TOMMI_APP_ID:
+        required: true
+      TOMMI_PRIVATE_KEY:
+        required: true
+      GEMINI_API_KEY:
+        required: true
+
+jobs:
+  tommi:
+    # Trigger on human comments/reviews containing /tommi, @tommi, or @t-o-m-m-i-ai-reviewer OR when a PR is merged
+    if: |
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
+      ((github.event.comment.user.type != 'Bot' && github.event.review.user.type != 'Bot' && !endsWith(github.actor, '[bot]')) &&
+       (contains(github.event.comment.body, '/tommi') || contains(github.event.review.body, '/tommi') ||
+        contains(github.event.comment.body, '@tommi') || contains(github.event.review.body, '@tommi') ||
+        contains(github.event.comment.body, '@t-o-m-m-i-ai-reviewer') || contains(github.event.review.body, '@t-o-m-m-i-ai-reviewer')))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Run T.O.M.M.I.
+        uses: thomasglasser/tommi@main
+        with:
+          app-id: ${{ secrets.TOMMI_APP_ID }}
+          private-key: ${{ secrets.TOMMI_PRIVATE_KEY }}
+          gemini-api-key: ${{ secrets.GEMINI_API_KEY }}
