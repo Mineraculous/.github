@@ -55,7 +55,10 @@ repositories {
 				url = 'https://maven.blamejared.com/'
 			}
 		}
-		filter { includeGroupAndSubgroups "mezz.jei" }
+		filter {
+			includeGroupAndSubgroups "mezz.jei"
+			includeGroupAndSubgroups "net.mezzdev"
+		}
 	}
 	exclusiveContent {
 		forRepository {
