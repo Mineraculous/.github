@@ -34,11 +34,21 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Setup JDK 21
+      - name: Determine Java Version
+        id: java-version
+        run: |
+          JAVA_VER=$(grep -E '^\s*java_version\s*=' gradle.properties 2>/dev/null | cut -d'=' -f2 | tr -d ' ' || true)
+          if [ -z "$JAVA_VER" ]; then
+            echo "::error::java_version must be defined in gradle.properties"
+            exit 1
+          fi
+          echo "version=$JAVA_VER" >> $GITHUB_OUTPUT
+
+      - name: Setup JDK
         uses: actions/setup-java@v6
         with:
-          java-version: '21'
-          distribution: 'temurin'
+          java-version: ${{ steps.java-version.outputs.version }}
+          distribution: 'microsoft'
 
       - name: Build with Gradle
         uses: gradle/actions/setup-gradle@v6

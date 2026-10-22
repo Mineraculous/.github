@@ -1,0 +1,2 @@
+Copyright (c) Thomas Glasser
+SPDX-License-Identifier: All Rights Reserved

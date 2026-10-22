@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       mod-id:
-        description: "Resource directory/mod ID name (e.g. mineraculous, mineraculouskamikotizations)"
+        description: "Resource directory/mod ID (e.g. mineraculous, mineraculouskamikotizations)"
         required: true
         type: string
       target-repo:
@@ -47,12 +47,23 @@ jobs:
           path: target-repo
           ref: ${{ inputs.target-branch }}
 
-      - name: Setup JDK 21
+      - name: Determine Java Version
+        if: ${{ inputs.run-datagen }}
+        id: java-version
+        run: |
+          JAVA_VER=$(grep -E '^\s*java_version\s*=' source-repo/gradle.properties 2>/dev/null | cut -d'=' -f2 | tr -d ' ' || true)
+          if [ -z "$JAVA_VER" ]; then
+            echo "::error::java_version must be defined in gradle.properties"
+            exit 1
+          fi
+          echo "version=$JAVA_VER" >> $GITHUB_OUTPUT
+
+      - name: Setup JDK
         if: ${{ inputs.run-datagen }}
         uses: actions/setup-java@v6
         with:
-          java-version: '21'
-          distribution: 'temurin'
+          java-version: ${{ steps.java-version.outputs.version }}
+          distribution: 'microsoft'
 
       - name: Setup Gradle
         if: ${{ inputs.run-datagen }}

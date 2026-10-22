@@ -4,32 +4,23 @@
     "config:recommended"
   ],
   "dependencyDashboard": true,
-  "customManagers": [
-    {
-      "customType": "regex",
-      "fileMatch": [
-        "(^|/)gradle\\.properties$"
-      ],
-      "matchStrings": [
-        "\\bneoforge_version\\s*=\\s*(?<currentValue>[^\\s]+)"
-      ],
-      "depNameTemplate": "net.neoforged:neoforge",
-      "datasourceTemplate": "maven"
-    }
-  ],
   "packageRules": [
     {
-      "description": "Disable Gradle manager dependency updates by default; Minecraft mods are tracked via mod_deps.json and custom updater",
+      "description": "Disable Gradle manager dependency updates by default; Minecraft mods are tracked via mod_dependencies.json and custom updater",
       "matchManagers": [
         "gradle"
       ],
       "enabled": false
     },
     {
-      "description": "Lock Java JDK version to 21 for Minecraft 1.21.1",
+      "description": "Disallow major Java version upgrades",
       "matchPackageNames": [
         "java-jdk",
-        "java"
+        "java",
+        "/^actions/setup-java/"
+      ],
+      "matchUpdateTypes": [
+        "major"
       ],
       "enabled": false
     },
@@ -43,63 +34,15 @@
       ]
     },
     {
-      "description": "Constrain NeoForge updates strictly to current Minecraft version (A.B) with semantic versioning for subsequent sections",
+      "description": "Combine all Gradle toolchain plugins and wrapper updates into a single PR",
       "matchPackageNames": [
-        "/^net\\.neoforged:neoforge/"
-      ],
-      "versioning": "regex:^(?<compatibility>\\d+\\.\\d+)\\.(?<major>\\d+)(?:\\.(?<minor>\\d+))?(?:\\.(?<patch>\\d+))?(?:-(?<prerelease>.*))?$",
-      "groupName": "NeoForge",
-      "enabled": true
-    },
-    {
-      "description": "ModDevGradle toolchain updates",
-      "matchManagers": [
+        "/^net\\.neoforged(\\.moddev|:moddev)/",
+        "/^dev\\.lukebemish\\.immaculate/",
+        "/^org\\.gradle\\.toolchains\\.foojay-resolver-convention/",
         "gradle"
       ],
-      "matchPackageNames": [
-        "/^net\\.neoforged(\\.moddev|:moddev)/"
-      ],
-      "groupName": "ModDevGradle",
+      "groupName": "Gradle Toolchain",
       "enabled": true
-    },
-    {
-      "description": "Gradle plugins (Immaculate & Foojay)",
-      "matchManagers": [
-        "gradle"
-      ],
-      "matchPackageNames": [
-        "dev.lukebemish.immaculate",
-        "org.gradle.toolchains.foojay-resolver-convention"
-      ],
-      "enabled": true
-    },
-    {
-      "description": "Voice Chat Maven registry",
-      "registryUrls": [
-        "https://maven.maxhenkel.de/repository/public"
-      ],
-      "matchPackageNames": [
-        "/^de\\.maxhenkel\\.voicechat/"
-      ]
-    },
-    {
-      "description": "Voice Chat API (Minecraft-version independent)",
-      "matchManagers": [
-        "gradle"
-      ],
-      "matchPackageNames": [
-        "/^de\\.maxhenkel\\.voicechat:voicechat-api/"
-      ],
-      "groupName": "Voice Chat API",
-      "enabled": true
-    },
-    {
-      "description": "Group GitHub Actions updates",
-      "matchManagers": [
-        "github-actions"
-      ],
-      "groupName": "GitHub Actions",
-      "automerge": false
     }
   ]
 }

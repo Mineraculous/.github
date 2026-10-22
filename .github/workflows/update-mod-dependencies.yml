@@ -6,7 +6,7 @@ on:
       config-path:
         description: 'Path to mod dependencies JSON file'
         required: false
-        default: '.github/mod_deps.json'
+        default: '.github/mod_dependencies.json'
         type: string
       base-branch:
         description: 'Target base branch to update dependencies against (defaults to GITHUB_REF_NAME or current branch)'
@@ -17,9 +17,13 @@ on:
       SYNC_TOKEN:
         description: 'Token with repo write and pull request write permissions'
         required: false
+      MINERACULOUS_USERNAME:
+        required: false
+      MINERACULOUS_PASSWORD:
+        required: false
 
 jobs:
-  update-mod-deps:
+  update-mod-dependencies:
     name: Check Mod Updates
     runs-on: ubuntu-latest
     permissions:
@@ -51,9 +55,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.SYNC_TOKEN || secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.SYNC_TOKEN || secrets.GITHUB_TOKEN }}
+          MINERACULOUS_USERNAME: ${{ secrets.MINERACULOUS_USERNAME }}
+          MINERACULOUS_PASSWORD: ${{ secrets.MINERACULOUS_PASSWORD }}
         run: |
           EXTRA_ARGS=""
           if [ -n "${{ inputs.base-branch }}" ]; then
             EXTRA_ARGS="--base ${{ inputs.base-branch }}"
           fi
-          python .central-tooling/scripts/update_modrinth_deps.py --config "${{ inputs.config-path }}" $EXTRA_ARGS
+          python .central-tooling/scripts/update_mod_dependencies.py --config "${{ inputs.config-path }}" $EXTRA_ARGS

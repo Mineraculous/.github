@@ -7,11 +7,14 @@ import java.io.FileFilter
 import java.util.regex.Matcher
 import java.util.regex.Pattern
 
+def isInternalProject = project.group.toString().startsWith("dev.thomasglasser")
+
 // ------------------------------------------------------------------------------
 // Gradle Wrapper & Base Archive Configuration
 // ------------------------------------------------------------------------------
 tasks.named('wrapper', Wrapper).configure {
 	distributionType = Wrapper.DistributionType.BIN
+	gradleVersion = '9.8.2'
 }
 
 base {
@@ -22,7 +25,10 @@ base {
 // Java Toolchain & Standard Jars
 // ------------------------------------------------------------------------------
 java {
-	toolchain.languageVersion = JavaLanguageVersion.of(java_version)
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(java_version)
+		vendor = JvmVendorSpec.MICROSOFT
+	}
 	withSourcesJar()
 	withJavadocJar()
 }
@@ -152,27 +158,41 @@ sourceSets.main.resources { srcDir 'src/generated/resources' }
 // ------------------------------------------------------------------------------
 // Version Range Calculations for NeoForge & Dependencies
 // ------------------------------------------------------------------------------
-ext.getMajorVersionRange = { String version ->
-	def prefix = version.contains('-') ? version.substring(0, version.indexOf('-') + 1) : ""
-	def clean = prefix ? version.substring(prefix.length()) : version
+ext.getMajorVersionRange = { version ->
+	String v = version.toString()
+	def prefix = v.contains('-') ? v.substring(0, v.indexOf('-') + 1) : ""
+	def clean = prefix ? v.substring(prefix.length()) : v
 	def major = clean.takeBefore('.') as int
 	def next = prefix ? "${prefix}${major + 1}" : "${major + 1}"
-	return "[${version},${next})".toString()
+	return "[${v},${next})".toString()
 }
 
-ext.getMinorVersionRange = { String version ->
-	def major = version.takeBefore('.')
-	def minor = (version.takeAfter('.').takeBefore('.') ?: version.takeAfter('.')) as int
-	return "[${version},${major}.${minor + 1})".toString()
+ext.getMinorVersionRange = { version ->
+	String v = version.toString()
+	def major = v.takeBefore('.')
+	def minor = (v.takeAfter('.').takeBefore('.') ?: v.takeAfter('.')) as int
+	return "[${v},${major}.${minor + 1})".toString()
 }
 
-ext.getMineraculousVersionRange = { String version ->
-	if (!version.contains('-beta'))
-		return ext.getMajorVersionRange(version)
-	def suffix = version.indexOf('beta') + 4 as int
-	def base = version.substring(0, suffix)
-	def beta = version.substring(suffix) as int
-	return "[${version},${base}${beta + 1})".toString()
+ext.getPatchVersionRange = { version ->
+	String v = version.toString()
+	def lastDot = v.lastIndexOf('.')
+	if (lastDot != -1) {
+		def prefix = v.substring(0, lastDot + 1)
+		def patch = (v.substring(lastDot + 1) as int) + 1
+		return "[${v},${prefix}${patch})".toString()
+	}
+	return "[${v},)".toString()
+}
+
+ext.getMineraculousVersionRange = { version ->
+	String v = version.toString()
+	if (!v.contains('-beta'))
+		return ext.getMajorVersionRange(v)
+	def suffix = v.indexOf('beta') + 4 as int
+	def base = v.substring(0, suffix)
+	def beta = v.substring(suffix) as int
+	return "[${v},${base}${beta + 1})".toString()
 }
 
 // ------------------------------------------------------------------------------
@@ -187,7 +207,7 @@ neoForge {
 	}
 
 	parchment {
-		minecraftVersion = parchment_minecraft_version
+		minecraftVersion = project.findProperty('parchment_minecraft_version') ?: minecraft_version
 		mappingsVersion = parchment_version
 	}
 
@@ -241,44 +261,62 @@ neoForge {
 // ------------------------------------------------------------------------------
 // Mod Metadata Expansion & Task Registration
 // ------------------------------------------------------------------------------
+def NON_MOD_VERSION_PREFIXES = ['java_', 'parchment_', 'mdg_', 'foojay_', 'immaculate_', 'major_fml_'] as Set
+
 ext.registerModMetadata = { Map extraProps = [:] ->
 	def replaceProperties = [
 		version: project.version,
 		group: project.group,
-		minecraft_version: minecraft_version,
-		minecraft_version_range: "[${minecraft_version},${project.findProperty('next_minecraft_version') ?: '1.21.2'})".toString(),
-		next_minecraft_version: project.findProperty('next_minecraft_version') ?: '1.21.2',
 		mod_name: mod_name,
 		mod_author: mod_author,
 		mod_id: mod_id,
 		license: license,
 		description: project.description,
-		neoforge_version: neoforge_version,
-		neoforge_version_range: ext.getMinorVersionRange(neoforge_version),
+		icon: project.findProperty('icon') ?: 'icon.png',
+		github_name: project.findProperty('github_name') ?: (project.findProperty('mod_name') ? project.mod_name.toString().replaceAll(/[^A-Za-z0-9 _-]/, '').trim().replaceAll(/\s+/, '-') : null),
 		major_fml_version: major_fml_version,
 		java_version: java_version,
-		icon: project.findProperty('icon') ?: 'icon.png',
-		github_name: project.findProperty('github_name') ?: project.name,
 	]
-	if (project.hasProperty('tommylib_version')) {
-		replaceProperties.tommylib_version = tommylib_version
-		replaceProperties.tommylib_version_range = ext.getMajorVersionRange(tommylib_version)
+
+	project.properties.each { key, val ->
+		def k = key.toString()
+		if (k.endsWith('_version') && val != null) {
+			def strVal = val.toString()
+			if (!replaceProperties.containsKey(k)) {
+				replaceProperties.put(k, strVal)
+			}
+			def rangeKey = "${k}_range".toString()
+			if (!replaceProperties.containsKey(rangeKey)) {
+				switch (k) {
+					case 'minecraft_version':
+						replaceProperties.put(rangeKey, ext.getPatchVersionRange(strVal))
+						break
+					case 'neoforge_version':
+						replaceProperties.put(rangeKey, ext.getMinorVersionRange(strVal))
+						break
+					case 'mineraculous_version':
+						replaceProperties.put(rangeKey, ext.getMineraculousVersionRange(strVal))
+						break
+					default:
+						if (!NON_MOD_VERSION_PREFIXES.any { k.startsWith(it) } && !k.endsWith('_api_version')) {
+							replaceProperties.put(rangeKey, ext.getMajorVersionRange(strVal))
+						}
+						break
+				}
+			}
+		}
 	}
-	if (project.hasProperty('mineraculous_version')) {
-		replaceProperties.mineraculous_version = mineraculous_version
-		replaceProperties.mineraculous_version_range = ext.getMineraculousVersionRange(mineraculous_version)
-	}
-	if (project.hasProperty('curios_version')) replaceProperties.curios_version = curios_version
-	if (project.hasProperty('smartbrainlib_version')) replaceProperties.smartbrainlib_version = smartbrainlib_version
-	if (project.hasProperty('modonomicon_version')) replaceProperties.modonomicon_version = modonomicon_version
-	if (project.hasProperty('jade_version')) replaceProperties.jade_version = jade_version
-	if (project.hasProperty('jei_version')) replaceProperties.jei_version = jei_version
 
 	replaceProperties.putAll(extraProps)
 
+	Map<String, Object> stringifiedProperties = [:]
+	replaceProperties.each { k, v ->
+		stringifiedProperties.put(k.toString(), v != null ? v.toString() : '')
+	}
+
 	def generateModMetadata = tasks.register("generateModMetadata", ProcessResources) {
-		inputs.properties replaceProperties
-		expand replaceProperties
+		inputs.properties stringifiedProperties
+		expand stringifiedProperties
 		from "src/main/templates"
 		into "build/generated/sources/modMetadata"
 	}
@@ -299,7 +337,7 @@ def projectRootDir = project.projectDir
 tasks.register('setupGitHooks') {
 	description = 'Automatically installs pre-push hook into .git/hooks to protect release branches'
 	group = 'verification'
-	enabled = hasGit && !isCI
+	enabled = hasGit && !isCI && isInternalProject
 
 	// Capture plain File objects outside doLast closure for Configuration Cache compatibility
 	def targetGitDir = gitDir
@@ -387,129 +425,144 @@ import net.minecraft.MethodsReturnNonnullByDefault;
 // ------------------------------------------------------------------------------
 // Code Formatting (Immaculate & Spotless)
 // ------------------------------------------------------------------------------
-compileJava.dependsOn immaculateApply
-compileJava.finalizedBy immaculateCheck
-tasks.named('check').configure {
-	dependsOn immaculateCheck
-}
-
-immaculate {
-	workflows.register('java') {
-		files.from rootProject.fileTree("src", {
-			include "**/*.java"
-		})
-		noTabs()
-		google {
-			fixImports()
-		}
-		toggleOff = 'spotless:off'
-		toggleOn = 'spotless:on'
-
-		def configFile = rootProject.file('codeformat/formatter-config.xml')
-		if (configFile.exists()) {
-			eclipse {
-				version '3.37.0'
-				config = configFile
-			}
-		}
-
-		custom 'canonicalizeNullable', { String fileContents ->
-			fileContents = fileContents.replace('javax.annotation.Nullable', 'org.jetbrains.annotations.Nullable')
-			fileContents = fileContents.replace('jakarta.annotation.Nullable', 'org.jetbrains.annotations.Nullable')
-			fileContents = fileContents.replace('edu.umd.cs.findbugs.annotations.Nullable', 'org.jetbrains.annotations.Nullable')
-			fileContents = fileContents.replace('org.checkerframework.checker.nullness.qual.Nullable', 'org.jetbrains.annotations.Nullable')
-			fileContents = fileContents.replace('android.annotation.Nullable', 'org.jetbrains.annotations.Nullable')
-			fileContents = fileContents.replace('com.google.errorprone.annotations.Nullable', 'org.jetbrains.annotations.Nullable')
-			return fileContents
-		}
-
-		custom 'noWildcardImports', { String fileContents ->
-			if (Pattern.compile('(?m)^\\s*import\\s+(?:static\\s+)?[^;\\r\\n]+\\*;').matcher(fileContents).find()) {
-				throw new GradleException('No wildcard imports are allowed! Explicitly import each class.')
-			}
-		}
-
-		custom 'noStaticImports', { String fileContents ->
-			if (Pattern.compile('(?m)^\\s*import\\s+static\\s+').matcher(fileContents).find()) {
-				throw new GradleException('Static imports are disallowed. Use class qualification (e.g. Collections.emptyList()).')
-			}
-		}
-
-		custom 'noNotNull', { String fileContents ->
-			if (fileContents.contains('@NotNull') || fileContents.contains('@Nonnull')) {
-				throw new GradleException('@NotNull and @Nonnull are disallowed. Parameters and return types are non-null by default via package-info.java.')
-			}
-		}
-
-		custom 'noVar', { String fileContents ->
-			if (Pattern.compile('(?m)^\\s*(?:final\\s+)?var\\s+[a-zA-Z_$][a-zA-Z0-9_$]*\\s*=').matcher(fileContents).find()) {
-				throw new GradleException("Do not use the 'var' keyword. Explicitly define variable types.")
-			}
-		}
-
-		custom 'singleLineParameters', { String fileContents ->
-			Pattern recordPattern = Pattern.compile('(?s)(\\brecord\\s+[A-Za-z0-9_$]+(?:<[^>{}]+>)?\\s*\\()((?:[^()]|\\([^()]*\\))*?)(\\)\\s*(?:implements\\s+[^{]+)?\\{)')
-			fileContents = recordPattern.matcher(fileContents).replaceAll { Matcher m ->
-				String params = m.group(2).replaceAll('\\s*\\r?\\n\\s*', ' ').trim()
-				return Matcher.quoteReplacement(m.group(1) + params + m.group(3))
-			}
-
-			Pattern methodPattern = Pattern.compile('(?s)(^[ \\t]*(?:(?:/\\*\\*(?:[^*]|\\*(?!/))*\\*/|(?:///[^\\r\\n]*\\r?\\n[ \\t]*)+)\\r?\\n[ \\t]*)?(?:@[A-Za-z0-9_.]+(?:\\((?:[^()]|\\([^()]*\\))*\\))?[ \\t]*(?:\\r?\\n[ \\t]*)?)*(?:(?:public|protected|private|static|final|abstract|synchronized|native|default)\\s+)+(?!class\\b|interface\\b|enum\\b|record\\b|@interface\\b)(?:<[^>{}]+>\\s+)?(?:(?:@[A-Za-z0-9_.]+(?:\\((?:[^()]|\\([^()]*\\))*\\))?\\s+)|[A-Za-z0-9_.<>\\[\\], \\t]+?\\s+)*(?:[A-Za-z0-9_$]+\\s*\\())((?:[^()]|\\([^()]*\\))*?)(\\)\\s*(?:throws\\s+[^{;]+)?(?:\\{|;))', Pattern.MULTILINE)
-			fileContents = methodPattern.matcher(fileContents).replaceAll { Matcher m ->
-				String params = m.group(2).replaceAll('\\s*\\r?\\n\\s*', ' ').trim()
-				return Matcher.quoteReplacement(m.group(1) + params + m.group(3))
-			}
-
-			return fileContents
-		}
-
-		custom 'noBlankLinesAfterClassDeclarations', { String fileContents ->
-			Pattern pattern = Pattern.compile('(?s)(\\b(?:class|interface|enum|record|@interface)\\b[^{;]*?\\{(?:[ \\t]*//[^\\r\\n]*)?)[ \\t]*\\r?\\n(?:[ \\t]*\\r?\\n)+')
-			return pattern.matcher(fileContents).replaceAll('$1\n')
-		}
-
-		custom 'blankLinesBeforeMethods', { String fileContents ->
-			Pattern pattern = Pattern.compile('(?m)^([ \\t]*(?:[^\\r\\n;]+;|\\})(?:[ \\t]*//[^\\r\\n]*)?)\\r?\\n([ \\t]*(?:(?:/\\*\\*(?:[^*]|\\*(?!/))*\\*/|(?:///[^\\r\\n]*\\r?\\n[ \\t]*)+)\\r?\\n[ \\t]*)?(?:@[A-Za-z0-9_.]+(?:\\((?:[^()]|\\([^()]*\\))*\\))?[ \\t]*(?:\\r?\\n[ \\t]*)?)*(?:(?:public|protected|private|static|final|abstract|synchronized|native|default)\\s+)+(?!class\\b|interface\\b|enum\\b|record\\b|@interface\\b)(?:<[^>{}]+>\\s+)?(?:(?:@[A-Za-z0-9_.]+(?:\\((?:[^()]|\\([^()]*\\))*\\))?\\s+)|[A-Za-z0-9_.<>\\[\\], \\t]+?\\s+)*(?:[A-Za-z0-9_]+\\s*\\(|[A-Za-z0-9_]+\\s*\\{))')
-			return pattern.matcher(fileContents).replaceAll('$1\n\n$2')
-		}
-
-		custom 'blankLinesBeforeMemberTypes', { String fileContents ->
-			Pattern pattern = Pattern.compile('(?m)^([ \\t]*(?:[^\\r\\n;]+;|\\})(?:[ \\t]*//[^\\r\\n]*)?)\\r?\\n([ ]{4}(?:(?:/\\*\\*(?:[^*]|\\*(?!/))*\\*/|(?:///[^\\r\\n]*\\r?\\n[ \\t]*)+)\\r?\\n[ ]{4})?(?:@[A-Za-z0-9_.]+(?:\\((?:[^()]|\\([^()]*\\))*\\))?\\s+)*(?:(?:public|protected|private|static|final|abstract|sealed|non-sealed)\\s+)*(?:class|interface|enum|record|@interface)\\s+[A-Za-z0-9_]+|[ ]{8,}(?:(?:/\\*\\*(?:[^*]|\\*(?!/))*\\*/|(?:///[^\\r\\n]*\\r?\\n[ \\t]*)+)\\r?\\n[ ]{8,})?(?:@[A-Za-z0-9_.]+(?:\\((?:[^()]|\\([^()]*\\))*\\))?\\s+)*(?:(?:public|protected|private|static|final|abstract|sealed|non-sealed)\\s+)*(?:public|protected|private)\\s+(?:(?:public|protected|private|static|final|abstract|sealed|non-sealed)\\s+)*(?:class|interface|enum|record|@interface)\\s+[A-Za-z0-9_]+)')
-			return pattern.matcher(fileContents).replaceAll('$1\n\n$2')
-		}
-
-		custom 'trimTrailingWhitespace', { String fileContents ->
-			return fileContents.replaceAll('(?m)[ \t]+$', '')
-		}
-
-		custom 'endWithNewline', { String fileContents ->
-			return fileContents.stripTrailing() + '\n'
-		}
+plugins.withId('dev.lukebemish.immaculate') {
+	compileJava.dependsOn immaculateApply
+	compileJava.finalizedBy immaculateCheck
+	tasks.named('check').configure {
+		dependsOn immaculateCheck
 	}
 
-	workflows.register('gradle') {
-		files.from rootProject.fileTree(projectDir, {
-			include '**/*.gradle'
-			include '**/*.gradle.kts'
-			exclude 'build/**', '.gradle/**', 'src/generated/**'
-		})
-		custom 'trimTrailingWhitespace', { String fileContents ->
-			return fileContents.replaceAll('(?m)[ \t]+$', '')
-		}
-		custom 'endWithNewline', { String fileContents ->
-			return fileContents.stripTrailing() + '\n'
-		}
-	}
+	immaculate {
+		workflows.register('java') {
+			files.from rootProject.fileTree("src", {
+				include "**/*.java"
+			})
+			noTabs()
+			google {
+				fixImports()
+			}
+			toggleOff = 'spotless:off'
+			toggleOn = 'spotless:on'
 
-	workflows.register('json') {
-		files.from rootProject.fileTree("src/main/resources", {
-			include "**/*.json"
-		})
-		custom 'trimTrailingWhitespace', { String fileContents ->
-			return fileContents.replaceAll('(?m)[ \t]+$', '')
+			def configFile = rootProject.file('codeformat/formatter-config.xml')
+			if (!configFile.exists()) {
+				configFile = rootProject.layout.buildDirectory.file('codeformat/formatter-config.xml').get().asFile
+				if (!configFile.exists()) {
+					configFile.parentFile.mkdirs()
+					try {
+						new URL('https://raw.githubusercontent.com/Mineraculous/.github/main/codeformat/formatter-config.xml').withInputStream { i ->
+							configFile.withOutputStream { it << i }
+						}
+					} catch (Exception e) {
+						logger.warn("Failed to download formatter config: ${e.message}")
+					}
+				}
+			}
+			if (configFile.exists()) {
+				eclipse {
+					version '3.37.0'
+					config = configFile
+				}
+			}
+
+			custom 'canonicalizeNullable', { String fileContents ->
+				fileContents = fileContents.replace('javax.annotation.Nullable', 'org.jetbrains.annotations.Nullable')
+				fileContents = fileContents.replace('jakarta.annotation.Nullable', 'org.jetbrains.annotations.Nullable')
+				fileContents = fileContents.replace('edu.umd.cs.findbugs.annotations.Nullable', 'org.jetbrains.annotations.Nullable')
+				fileContents = fileContents.replace('org.checkerframework.checker.nullness.qual.Nullable', 'org.jetbrains.annotations.Nullable')
+				fileContents = fileContents.replace('android.annotation.Nullable', 'org.jetbrains.annotations.Nullable')
+				fileContents = fileContents.replace('com.google.errorprone.annotations.Nullable', 'org.jetbrains.annotations.Nullable')
+				return fileContents
+			}
+
+			custom 'noWildcardImports', { String fileContents ->
+				if (Pattern.compile('(?m)^\\s*import\\s+(?:static\\s+)?[^;\\r\\n]+\\*;').matcher(fileContents).find()) {
+					throw new GradleException('No wildcard imports are allowed! Explicitly import each class.')
+				}
+			}
+
+			custom 'noStaticImports', { String fileContents ->
+				if (Pattern.compile('(?m)^\\s*import\\s+static\\s+').matcher(fileContents).find()) {
+					throw new GradleException('Static imports are disallowed. Use class qualification (e.g. Collections.emptyList()).')
+				}
+			}
+
+			custom 'noNotNull', { String fileContents ->
+				if (fileContents.contains('@NotNull') || fileContents.contains('@Nonnull')) {
+					throw new GradleException('@NotNull and @Nonnull are disallowed. Parameters and return types are non-null by default via package-info.java.')
+				}
+			}
+
+			custom 'noVar', { String fileContents ->
+				if (Pattern.compile('(?m)^\\s*(?:final\\s+)?var\\s+[a-zA-Z_$][a-zA-Z0-9_$]*\\s*=').matcher(fileContents).find()) {
+					throw new GradleException("Do not use the 'var' keyword. Explicitly define variable types.")
+				}
+			}
+
+			custom 'singleLineParameters', { String fileContents ->
+				Pattern recordPattern = Pattern.compile('(?s)(\\brecord\\s+[A-Za-z0-9_$]+(?:<[^>{}]+>)?\\s*\\()((?:[^()]|\\([^()]*\\))*?)(\\)\\s*(?:implements\\s+[^{]+)?\\{)')
+				fileContents = recordPattern.matcher(fileContents).replaceAll { Matcher m ->
+					String params = m.group(2).replaceAll('\\s*\\r?\\n\\s*', ' ').trim()
+					return Matcher.quoteReplacement(m.group(1) + params + m.group(3))
+				}
+
+				Pattern methodPattern = Pattern.compile('(?s)(^[ \\t]*(?:(?:/\\*\\*(?:[^*]|\\*(?!/))*\\*/|(?:///[^\\r\\n]*\\r?\\n[ \\t]*)+)\\r?\\n[ \\t]*)?(?:@[A-Za-z0-9_.]+(?:\\((?:[^()]|\\([^()]*\\))*\\))?[ \\t]*(?:\\r?\\n[ \\t]*)?)*(?:(?:public|protected|private|static|final|abstract|synchronized|native|default)\\s+)+(?!class\\b|interface\\b|enum\\b|record\\b|@interface\\b)(?:<[^>{}]+>\\s+)?(?:(?:@[A-Za-z0-9_.]+(?:\\((?:[^()]|\\([^()]*\\))*\\))?\\s+)|[A-Za-z0-9_.<>\\[\\], \\t]+?\\s+)*(?:[A-Za-z0-9_$]+\\s*\\())((?:[^()]|\\([^()]*\\))*?)(\\)\\s*(?:throws\\s+[^{;]+)?(?:\\{|;))', Pattern.MULTILINE)
+				fileContents = methodPattern.matcher(fileContents).replaceAll { Matcher m ->
+					String params = m.group(2).replaceAll('\\s*\\r?\\n\\s*', ' ').trim()
+					return Matcher.quoteReplacement(m.group(1) + params + m.group(3))
+				}
+
+				return fileContents
+			}
+
+			custom 'noBlankLinesAfterClassDeclarations', { String fileContents ->
+				Pattern pattern = Pattern.compile('(?s)(\\b(?:class|interface|enum|record|@interface)\\b[^{;]*?\\{(?:[ \\t]*//[^\\r\\n]*)?)[ \\t]*\\r?\\n(?:[ \\t]*\\r?\\n)+')
+				return pattern.matcher(fileContents).replaceAll('$1\n')
+			}
+
+			custom 'blankLinesBeforeMethods', { String fileContents ->
+				Pattern pattern = Pattern.compile('(?m)^([ \\t]*(?:[^\\r\\n;]+;|\\})(?:[ \\t]*//[^\\r\\n]*)?)\\r?\\n([ \\t]*(?:(?:/\\*\\*(?:[^*]|\\*(?!/))*\\*/|(?:///[^\\r\\n]*\\r?\\n[ \\t]*)+)\\r?\\n[ \\t]*)?(?:@[A-Za-z0-9_.]+(?:\\((?:[^()]|\\([^()]*\\))*\\))?[ \\t]*(?:\\r?\\n[ \\t]*)?)*(?:(?:public|protected|private|static|final|abstract|synchronized|native|default)\\s+)+(?!class\\b|interface\\b|enum\\b|record\\b|@interface\\b)(?:<[^>{}]+>\\s+)?(?:(?:@[A-Za-z0-9_.]+(?:\\((?:[^()]|\\([^()]*\\))*\\))?\\s+)|[A-Za-z0-9_.<>\\[\\], \\t]+?\\s+)*(?:[A-Za-z0-9_]+\\s*\\(|[A-Za-z0-9_]+\\s*\\{))')
+				return pattern.matcher(fileContents).replaceAll('$1\n\n$2')
+			}
+
+			custom 'blankLinesBeforeMemberTypes', { String fileContents ->
+				Pattern pattern = Pattern.compile('(?m)^([ \\t]*(?:[^\\r\\n;]+;|\\})(?:[ \\t]*//[^\\r\\n]*)?)\\r?\\n([ ]{4}(?:(?:/\\*\\*(?:[^*]|\\*(?!/))*\\*/|(?:///[^\\r\\n]*\\r?\\n[ \\t]*)+)\\r?\\n[ ]{4})?(?:@[A-Za-z0-9_.]+(?:\\((?:[^()]|\\([^()]*\\))*\\))?\\s+)*(?:(?:public|protected|private|static|final|abstract|sealed|non-sealed)\\s+)*(?:class|interface|enum|record|@interface)\\s+[A-Za-z0-9_]+|[ ]{8,}(?:(?:/\\*\\*(?:[^*]|\\*(?!/))*\\*/|(?:///[^\\r\\n]*\\r?\\n[ \\t]*)+)\\r?\\n[ ]{8,})?(?:@[A-Za-z0-9_.]+(?:\\((?:[^()]|\\([^()]*\\))*\\))?\\s+)*(?:(?:public|protected|private|static|final|abstract|sealed|non-sealed)\\s+)*(?:public|protected|private)\\s+(?:(?:public|protected|private|static|final|abstract|sealed|non-sealed)\\s+)*(?:class|interface|enum|record|@interface)\\s+[A-Za-z0-9_]+)')
+				return pattern.matcher(fileContents).replaceAll('$1\n\n$2')
+			}
+
+			custom 'trimTrailingWhitespace', { String fileContents ->
+				return fileContents.replaceAll('(?m)[ \t]+$', '')
+			}
+
+			custom 'endWithNewline', { String fileContents ->
+				return fileContents.stripTrailing() + '\n'
+			}
 		}
-		custom 'endWithNewline', { String fileContents ->
-			return fileContents.stripTrailing() + '\n'
+
+		workflows.register('gradle') {
+			files.from rootProject.fileTree(projectDir, {
+				include '**/*.gradle'
+				include '**/*.gradle.kts'
+				exclude 'build/**', '.gradle/**', 'src/generated/**'
+			})
+			custom 'trimTrailingWhitespace', { String fileContents ->
+				return fileContents.replaceAll('(?m)[ \t]+$', '')
+			}
+			custom 'endWithNewline', { String fileContents ->
+				return fileContents.stripTrailing() + '\n'
+			}
+		}
+
+		workflows.register('json') {
+			files.from rootProject.fileTree("src/main/resources", {
+				include "**/*.json"
+			})
+			custom 'trimTrailingWhitespace', { String fileContents ->
+				return fileContents.replaceAll('(?m)[ \t]+$', '')
+			}
+			custom 'endWithNewline', { String fileContents ->
+				return fileContents.stripTrailing() + '\n'
+			}
 		}
 	}
 }
@@ -571,12 +624,15 @@ if (!isBetaBuild) {
 
 signing {
 	useGpgCmd()
+	required { project.hasProperty('signing.keyId') || project.hasProperty('signing.gnupg.keyName') || System.getenv('GPG_SIGNING_KEY') != null }
 	sign publishing.publications.matching { it.name == 'mavenJava' }
 }
 
 // ------------------------------------------------------------------------------
 // Beta Tester Management & Artifact Publishing
 // ------------------------------------------------------------------------------
+def shouldGenerateBetaTesterJars = isBetaBuild && isInternalProject
+
 def getBetaTesters() {
 	def testers = []
 	try {
@@ -658,8 +714,14 @@ ext.registerBetaJar = this.&registerBetaJar
 // Standard Maven Publishing
 // ------------------------------------------------------------------------------
 publishing {
+	def githubOwner = project.findProperty('github_owner') ?: 'thomasglasser'
+	def repoName = project.findProperty('github_name') ?: (project.findProperty('mod_name') ? project.mod_name.toString().replaceAll(/[^A-Za-z0-9 _-]/, '').trim().replaceAll(/\s+/, '-') : null)
+	if (!repoName) {
+		throw new GradleException("Neither 'github_name' nor 'mod_name' was provided for publishing metadata SCM/issue tracking.")
+	}
+
 	publications {
-		if (isBetaBuild) {
+		if (shouldGenerateBetaTesterJars) {
 			getBetaTesters().each { testerName ->
 				registerBetaJar(testerName)
 
@@ -675,8 +737,7 @@ publishing {
 					pom {
 						name = project.mod_name
 						description = project.description
-						def repoName = project.findProperty('github_name') ?: project.name
-						url = "https://github.com/thomasglasser/${repoName}/wiki"
+						url = "https://github.com/${githubOwner}/${repoName}/wiki"
 						licenses {
 							license {
 								name = project.license
@@ -690,12 +751,12 @@ publishing {
 						}
 						issueManagement {
 							system = 'GitHub'
-							url = "https://github.com/thomasglasser/${repoName}/issues"
+							url = "https://github.com/${githubOwner}/${repoName}/issues"
 						}
 						scm {
-							connection = "scm:git:git://github.com/thomasglasser/${repoName}.git"
-							developerConnection = "scm:git:ssh://github.com:thomasglasser/${repoName}.git"
-							url = "https://github.com/thomasglasser/${repoName}/tree/${minecraft_version}"
+							connection = "scm:git:git://github.com/${githubOwner}/${repoName}.git"
+							developerConnection = "scm:git:ssh://github.com:${githubOwner}/${repoName}.git"
+							url = "https://github.com/${githubOwner}/${repoName}/tree/${minecraft_version}"
 						}
 					}
 				}
@@ -708,8 +769,7 @@ publishing {
 				pom {
 					name = project.mod_name
 					description = project.description
-					def repoName = project.findProperty('github_name') ?: project.name
-					url = "https://github.com/thomasglasser/${repoName}/wiki"
+					url = "https://github.com/${githubOwner}/${repoName}/wiki"
 					licenses {
 						license {
 							name = project.license
@@ -723,12 +783,12 @@ publishing {
 					}
 					issueManagement {
 						system = 'GitHub'
-						url = "https://github.com/thomasglasser/${repoName}/issues"
+						url = "https://github.com/${githubOwner}/${repoName}/issues"
 					}
 					scm {
-						connection = "scm:git:git://github.com/thomasglasser/${repoName}.git"
-						developerConnection = "scm:git:ssh://github.com:thomasglasser/${repoName}.git"
-						url = "https://github.com/thomasglasser/${repoName}/tree/${minecraft_version}"
+						connection = "scm:git:git://github.com/${githubOwner}/${repoName}.git"
+						developerConnection = "scm:git:ssh://github.com:${githubOwner}/${repoName}.git"
+						url = "https://github.com/${githubOwner}/${repoName}/tree/${minecraft_version}"
 					}
 				}
 			}
@@ -736,12 +796,24 @@ publishing {
 	}
 
 	repositories {
-		maven {
-			name = "Reposilite"
-			url = isBetaBuild ? "https://maven.thomasglasser.dev/betas" : "https://maven.thomasglasser.dev/releases"
-			credentials {
-				username = project.findProperty("REPOSILITE_USERNAME") ?: System.getenv("REPOSILITE_USERNAME")
-				password = project.findProperty("REPOSILITE_PASSWORD") ?: System.getenv("REPOSILITE_PASSWORD")
+		def customMavenUrl = project.findProperty('maven_url') ?: project.findProperty('publish_maven_url')
+		if (customMavenUrl) {
+			maven {
+				name = "Publish Maven"
+				url = customMavenUrl
+				credentials {
+					username = project.findProperty("MAVEN_USERNAME") ?: System.getenv("MAVEN_USERNAME") ?: project.findProperty("REPOSILITE_USERNAME") ?: System.getenv("REPOSILITE_USERNAME")
+					password = project.findProperty("MAVEN_PASSWORD") ?: System.getenv("MAVEN_PASSWORD") ?: project.findProperty("REPOSILITE_PASSWORD") ?: System.getenv("REPOSILITE_PASSWORD")
+				}
+			}
+		} else if (isInternalProject) {
+			maven {
+				name = "Reposilite"
+				url = isBetaBuild ? "https://maven.thomasglasser.dev/betas" : "https://maven.thomasglasser.dev/releases"
+				credentials {
+					username = project.findProperty("REPOSILITE_USERNAME") ?: System.getenv("REPOSILITE_USERNAME")
+					password = project.findProperty("REPOSILITE_PASSWORD") ?: System.getenv("REPOSILITE_PASSWORD")
+				}
 			}
 		}
 	}
