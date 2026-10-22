@@ -17,6 +17,9 @@ jobs:
   update-mod-deps:
     name: Check Mod Updates
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - name: Checkout caller repository
         uses: actions/checkout@v7

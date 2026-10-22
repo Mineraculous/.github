@@ -248,20 +248,24 @@ def main():
         )
         if pr_view.returncode == 0:
             print(f"  PR already exists for {branch}. Updating title & body...")
-            subprocess.run(["gh", "pr", "edit", branch, "--title", commit_msg, "--body", body], check=True)
+            subprocess.run(["gh", "pr", "edit", branch, "--title", commit_msg, "--body", body], check=False)
         else:
             print(f"  Opening new PR for {branch}...")
-            subprocess.run(
+            res = subprocess.run(
                 [
                     "gh", "pr", "create",
                     "--title", commit_msg,
                     "--body", body,
                     "--base", "main",
                     "--head", branch,
-                    "--label", "dependencies",
                 ],
-                check=False,
+                capture_output=True,
+                text=True,
             )
+            if res.returncode == 0:
+                print(f"  -> PR created: {res.stdout.strip()}")
+            else:
+                print(f"  -> [WARNING] gh pr create failed: {res.stderr.strip()}", file=sys.stderr)
 
         subprocess.run(["git", "checkout", "main"], check=True)
 

@@ -292,25 +292,34 @@ ext.registerModMetadata = { Map extraProps = [:] ->
 // ------------------------------------------------------------------------------
 // Git Hooks Automation (Block pushes to protected release branches)
 // ------------------------------------------------------------------------------
+def isCI = System.getenv("CI") != null || System.getenv("GITHUB_ACTIONS") != null
 def hasGit = layout.projectDirectory.dir('.git').asFile.exists()
+def gitDir = layout.projectDirectory.dir('.git').asFile
+def projectRootDir = project.projectDir
 
 tasks.register('setupGitHooks') {
 	description = 'Automatically installs pre-push hook into .git/hooks to protect release branches'
 	group = 'verification'
-	enabled = hasGit
+	enabled = hasGit && !isCI
+
+	// Capture plain File objects outside doLast closure for Configuration Cache compatibility
+	def targetGitDir = gitDir
+	def targetWorkDir = projectRootDir
+
 	doLast {
-		def gitDir = layout.projectDirectory.dir('.git').asFile
-		if (!gitDir.exists() || !gitDir.isDirectory()) {
+		if (!targetGitDir.exists() || !targetGitDir.isDirectory()) {
 			return
 		}
 
 		// Ensure core.hooksPath is unset so git uses standard .git/hooks
-		providers.exec {
-			commandLine 'git', 'config', '--unset', 'core.hooksPath'
-			ignoreExitValue = true
-		}.result.get()
+		try {
+			new ProcessBuilder('git', 'config', '--unset', 'core.hooksPath')
+				.directory(targetWorkDir)
+				.start()
+				.waitFor()
+		} catch (Exception ignored) {}
 
-		def hooksDir = new File(gitDir, 'hooks')
+		def hooksDir = new File(targetGitDir, 'hooks')
 		if (!hooksDir.exists()) {
 			hooksDir.mkdirs()
 		}
