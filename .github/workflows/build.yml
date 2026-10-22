@@ -38,6 +38,9 @@ jobs:
       - name: Build with Gradle
         uses: gradle/actions/setup-gradle@v6
 
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
       - name: Assemble the project
         run: ./gradlew build
         env:
