@@ -53,7 +53,7 @@ repositories {
 		url = 'https://maven.blamejared.com/'
 		content {
 			includeGroupAndSubgroups "mezz.jei"
-			includeGroupAndSubgroups "net.mezzdev"
+			includeGroupAndSubgroups "net.mezzdev.config"
 		}
 	}
 	exclusiveContent {
