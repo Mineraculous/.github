@@ -17,9 +17,18 @@ on:
         required: false
         type: string
         default: "main"
+      run-datagen:
+        description: "Whether to run data generation before syncing resources"
+        required: false
+        type: boolean
+        default: true
     secrets:
       SYNC_TOKEN:
         required: true
+      MINERACULOUS_USERNAME:
+        required: false
+      MINERACULOUS_PASSWORD:
+        required: false
 
 jobs:
   sync-assets:
@@ -37,6 +46,27 @@ jobs:
           token: ${{ secrets.SYNC_TOKEN }}
           path: target-repo
           ref: ${{ inputs.target-branch }}
+
+      - name: Setup JDK 21
+        if: ${{ inputs.run-datagen }}
+        uses: actions/setup-java@v6
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        if: ${{ inputs.run-datagen }}
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Run Data Generation in Source Repository
+        if: ${{ inputs.run-datagen }}
+        run: |
+          cd source-repo
+          chmod +x ./gradlew
+          ./gradlew runData
+        env:
+          MINERACULOUS_USERNAME: ${{ secrets.MINERACULOUS_USERNAME }}
+          MINERACULOUS_PASSWORD: ${{ secrets.MINERACULOUS_PASSWORD }}
 
       - name: Merge and Sync Directories
         run: |

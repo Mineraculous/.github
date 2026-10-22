@@ -13,11 +13,20 @@ on:
         required: false
         type: boolean
         default: true
+      run-datagen:
+        description: "Whether to run data generation and verify output"
+        required: false
+        type: boolean
+        default: true
     secrets:
       MINERACULOUS_USERNAME:
         required: false
       MINERACULOUS_PASSWORD:
         required: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -40,6 +49,24 @@ jobs:
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
+
+      - name: Run Data Generation
+        if: ${{ inputs.run-datagen }}
+        run: ./gradlew runData
+        env:
+          MINERACULOUS_USERNAME: ${{ secrets.MINERACULOUS_USERNAME }}
+          MINERACULOUS_PASSWORD: ${{ secrets.MINERACULOUS_PASSWORD }}
+
+      - name: Verify Generated Resources are Up-to-Date
+        if: ${{ inputs.run-datagen }}
+        run: |
+          if [ -d "src/generated" ]; then
+            if [ -n "$(git status --porcelain src/generated)" ]; then
+              echo "::error::Data generation produced uncommitted changes or discrepancies! Please run './gradlew runData' locally and commit the updated generated files."
+              git diff src/generated
+              exit 1
+            fi
+          fi
 
       - name: Assemble the project
         run: ./gradlew build
