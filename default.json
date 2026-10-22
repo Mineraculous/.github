@@ -4,6 +4,19 @@
     "config:recommended"
   ],
   "dependencyDashboard": true,
+  "customManagers": [
+    {
+      "customType": "regex",
+      "fileMatch": [
+        "(^|/)gradle\\.properties$"
+      ],
+      "matchStrings": [
+        "\\bneoforge_version\\s*=\\s*(?<currentValue>[^\\s]+)"
+      ],
+      "depNameTemplate": "net.neoforged:neoforge",
+      "datasourceTemplate": "maven"
+    }
+  ],
   "packageRules": [
     {
       "description": "Disable Gradle manager dependency updates by default; Minecraft mods are tracked via mod_deps.json and custom updater",
@@ -30,14 +43,11 @@
       ]
     },
     {
-      "description": "Constrain NeoForge updates strictly to 21.1.x for Minecraft 1.21.1",
-      "matchManagers": [
-        "gradle"
-      ],
+      "description": "Constrain NeoForge updates strictly to current Minecraft version (A.B) with semantic versioning for subsequent sections",
       "matchPackageNames": [
         "/^net\\.neoforged:neoforge/"
       ],
-      "allowedVersions": "/^21\\.1\\./",
+      "versioning": "regex:^(?<compatibility>\\d+\\.\\d+)\\.(?<major>\\d+)(?:\\.(?<minor>\\d+))?(?:\\.(?<patch>\\d+))?(?:-(?<prerelease>.*))?$",
       "groupName": "NeoForge",
       "enabled": true
     },
