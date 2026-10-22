@@ -569,7 +569,7 @@ signing {
 // ------------------------------------------------------------------------------
 // Beta Tester Management & Artifact Publishing
 // ------------------------------------------------------------------------------
-ext.getBetaTesters = {
+def getBetaTesters() {
 	def testers = []
 	try {
 		def gistUrl = new URL('https://gist.githubusercontent.com/thomasglasser/aa8eb933847685b93d8f99a59f07b62e/raw/mineraculous_special_players.txt')
@@ -587,7 +587,7 @@ ext.getBetaTesters = {
 	return testers
 }
 
-ext.getBetaTesterUuid = { String name ->
+def getBetaTesterUuid(String name) {
 	try {
 		def gistUrl = new URL('https://gist.githubusercontent.com/thomasglasser/aa8eb933847685b93d8f99a59f07b62e/raw/mineraculous_special_players.txt')
 		for (String line : gistUrl.readLines()) {
@@ -604,8 +604,8 @@ ext.getBetaTesterUuid = { String name ->
 	return ""
 }
 
-ext.registerBetaJar = { String testerName ->
-	String testerUuid = ext.getBetaTesterUuid(testerName)
+def registerBetaJar(String testerName) {
+	String testerUuid = getBetaTesterUuid(testerName)
 	if (!tasks.names.contains("jarBeta${testerName}")) {
 		File generatedMetaDir = layout.buildDirectory.dir("generated/beta/${testerName}/META-INF").get().asFile
 		File betaDir = layout.buildDirectory.dir("generated/beta/${testerName}").get().asFile
@@ -642,14 +642,18 @@ ext.registerBetaJar = { String testerName ->
 	}
 }
 
+ext.getBetaTesters = this.&getBetaTesters
+ext.getBetaTesterUuid = this.&getBetaTesterUuid
+ext.registerBetaJar = this.&registerBetaJar
+
 // ------------------------------------------------------------------------------
 // Standard Maven Publishing
 // ------------------------------------------------------------------------------
 publishing {
 	publications {
 		if (isBetaBuild) {
-			ext.getBetaTesters().each { testerName ->
-				ext.registerBetaJar(testerName)
+			getBetaTesters().each { testerName ->
+				registerBetaJar(testerName)
 
 				register("mavenBeta${testerName}", MavenPublication) {
 					groupId = "${project.group}.${testerName}"
