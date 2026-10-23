@@ -6,9 +6,10 @@
   "dependencyDashboard": true,
   "packageRules": [
     {
-      "description": "Disable Gradle manager dependency updates by default; Minecraft mods are tracked via mod_dependencies.json and custom updater",
+      "description": "Disable Gradle and Gradle Wrapper managers; mod dependencies are tracked via mod_dependencies.json and Gradle version is managed centrally via .github",
       "matchManagers": [
-        "gradle"
+        "gradle",
+        "gradle-wrapper"
       ],
       "enabled": false
     },
