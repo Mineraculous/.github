@@ -6,8 +6,8 @@
   "customManagers": [
     {
       "customType": "regex",
-      "fileMatch": [
-        "(^|/)gradle/common\\.gradle$"
+      "managerFilePatterns": [
+        "/(^|/)gradle/common\\.gradle$/"
       ],
       "matchStrings": [
         "\\bgradleVersion\\s*=\\s*['\"](?<currentValue>[^'\"]+)['\"]"
