@@ -4,12 +4,14 @@
     "config:recommended"
   ],
   "dependencyDashboard": true,
+  "gradle-wrapper": {
+    "enabled": false
+  },
   "packageRules": [
     {
-      "description": "Disable Gradle and Gradle Wrapper managers; mod dependencies are tracked via mod_dependencies.json and Gradle version is managed centrally via .github",
+      "description": "Disable Gradle manager dependency updates by default; Minecraft mods are tracked via mod_dependencies.json and custom updater",
       "matchManagers": [
-        "gradle",
-        "gradle-wrapper"
+        "gradle"
       ],
       "enabled": false
     },
@@ -35,7 +37,7 @@
       ]
     },
     {
-      "description": "Combine all Gradle toolchain plugins and wrapper updates into a single PR",
+      "description": "Combine all Gradle toolchain plugins into a single PR",
       "matchPackageNames": [
         "/^net\\.neoforged(\\.moddev|:moddev)/",
         "/^dev\\.lukebemish\\.immaculate/",
