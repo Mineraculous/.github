@@ -1,0 +1,39 @@
+name: PR Summary Writer
+
+on:
+  workflow_call:
+    secrets:
+      PR_SUMMARY_WRITER_APP_ID:
+        required: false
+      PR_SUMMARY_WRITER_PRIVATE_KEY:
+        required: false
+      PR_SUMMARY_WRITER_API_KEY:
+        required: false
+      PR_SUMMARIZER_API_KEY:
+        required: false
+      GEMINI_API_KEY:
+        required: false
+
+jobs:
+  summarize:
+    # Trigger on PR opens, new pushes (synchronize), reopens, or explicit /summarize comments
+    if: |
+      github.event_name == 'pull_request' ||
+      ((github.event.comment.user.type != 'Bot' && !endsWith(github.actor, '[bot]')) &&
+       (contains(github.event.comment.body, '/summarize') || contains(github.event.comment.body, '/summary')))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Run PR Summary Writer
+        uses: thomasglasser/pr-summary-writer@main
+        with:
+          app-id: ${{ secrets.PR_SUMMARY_WRITER_APP_ID || secrets.PR_SUMMARIZER_APP_ID }}
+          private-key: ${{ secrets.PR_SUMMARY_WRITER_PRIVATE_KEY || secrets.PR_SUMMARIZER_PRIVATE_KEY }}
+          gemini-api-key: ${{ secrets.PR_SUMMARY_WRITER_API_KEY || secrets.PR_SUMMARIZER_API_KEY || secrets.GEMINI_API_KEY }}

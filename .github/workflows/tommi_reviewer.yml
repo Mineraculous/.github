@@ -4,11 +4,17 @@ on:
   workflow_call:
     secrets:
       TOMMI_APP_ID:
-        required: true
+        required: false
       TOMMI_PRIVATE_KEY:
-        required: true
+        required: false
+      TOMMI_REVIEW_API_KEY:
+        required: false
+      TOMMI_FEEDBACK_API_KEY:
+        required: false
+      TOMMI_MERGE_API_KEY:
+        required: false
       GEMINI_API_KEY:
-        required: true
+        required: false
 
 jobs:
   tommi:
@@ -27,11 +33,14 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Run T.O.M.M.I.
-        uses: thomasglasser/tommi@main
+        uses: thomasglasser/TOMMI@main
         with:
           app-id: ${{ secrets.TOMMI_APP_ID }}
           private-key: ${{ secrets.TOMMI_PRIVATE_KEY }}
+          review-api-key: ${{ secrets.TOMMI_REVIEW_API_KEY }}
+          feedback-api-key: ${{ secrets.TOMMI_FEEDBACK_API_KEY }}
+          merge-api-key: ${{ secrets.TOMMI_MERGE_API_KEY }}
           gemini-api-key: ${{ secrets.GEMINI_API_KEY }}
