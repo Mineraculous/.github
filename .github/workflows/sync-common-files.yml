@@ -26,6 +26,13 @@ jobs:
           - repo: 'Mineraculous/Mineraculous-Expansion-Kamikotizations'
             branch: 'main'
     steps:
+      - name: Validate SYNC_TOKEN Secret
+        run: |
+          if [ -z "${{ secrets.SYNC_TOKEN }}" ]; then
+            echo "::error::The 'SYNC_TOKEN' secret is missing or empty in this repository or organization. A Personal Access Token (classic PAT with 'repo' scope, or fine-grained PAT with 'Contents' and 'Pull requests' read/write access across target repositories) is required to checkout private repositories and create pull requests across the organization."
+            exit 1
+          fi
+
       - name: Checkout Source (.github)
         uses: actions/checkout@v7
         with:
@@ -35,7 +42,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: ${{ matrix.target.repo }}
-          token: ${{ secrets.SYNC_TOKEN || secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.SYNC_TOKEN }}
           path: target
           ref: ${{ matrix.target.branch }}
           fetch-depth: 0
@@ -46,8 +53,8 @@ jobs:
 
       - name: Check for Changes and Open Pull Request
         env:
-          GH_TOKEN: ${{ secrets.SYNC_TOKEN || secrets.GITHUB_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.SYNC_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.SYNC_TOKEN }}
         run: |
           cd target
           
