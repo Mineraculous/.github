@@ -26,6 +26,7 @@ jobs:
         contains(github.event.comment.body, '@tommi') || contains(github.event.review.body, '@tommi') ||
         contains(github.event.comment.body, '@t-o-m-m-i-ai-reviewer') || contains(github.event.review.body, '@t-o-m-m-i-ai-reviewer')))
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
       pull-requests: write
