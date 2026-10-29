@@ -828,7 +828,21 @@ System.setProperty("http.keepAlive", "false")
 System.setProperty("org.gradle.internal.http.connectionTimeout", "120000")
 System.setProperty("org.gradle.internal.http.socketTimeout", "120000")
 
+// Automatically enable --continue for publish tasks so network hiccups on weak connections
+// don't abort the whole run.
+if (gradle.startParameter.taskNames.any { it.toLowerCase().contains('publish') }) {
+	gradle.startParameter.continueOnFailure = true
+}
+
+// Ensure artifact uploads happen sequentially (one at a time) rather than saturating weak Wi-Fi
+// with multiple simultaneous large file uploads.
+abstract class PublishMutex implements BuildService<BuildServiceParameters.None> {}
+def publishMutex = gradle.sharedServices.registerIfAbsent("publishMutex", PublishMutex) {
+	maxParallelUsages = 1
+}
+
 tasks.withType(PublishToMavenRepository).configureEach { task ->
+	usesService(publishMutex)
 	onlyIf {
 		if (project.hasProperty('forcePublish') && project.property('forcePublish') == 'true') {
 			return true
