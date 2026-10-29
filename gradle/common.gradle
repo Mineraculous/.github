@@ -4,6 +4,8 @@
 // ==============================================================================
 
 import java.io.FileFilter
+import java.net.HttpURLConnection
+import java.net.URI
 import java.util.regex.Matcher
 import java.util.regex.Pattern
 
@@ -816,5 +818,61 @@ publishing {
 				}
 			}
 		}
+	}
+}
+
+// ------------------------------------------------------------------------------
+// HTTP Connection Stabilization & Publishing Pre-Flight Checks
+// ------------------------------------------------------------------------------
+System.setProperty("http.keepAlive", "false")
+System.setProperty("org.gradle.internal.http.connectionTimeout", "120000")
+System.setProperty("org.gradle.internal.http.socketTimeout", "120000")
+
+tasks.withType(PublishToMavenRepository).configureEach { task ->
+	onlyIf {
+		if (project.hasProperty('forcePublish') && project.property('forcePublish') == 'true') {
+			return true
+		}
+		if (!(task.repository instanceof MavenArtifactRepository)) {
+			return true
+		}
+		def repo = (MavenArtifactRepository) task.repository
+		if (repo.url.scheme != 'http' && repo.url.scheme != 'https') {
+			return true
+		}
+		def pub = task.publication
+		if (!(pub instanceof MavenPublication)) {
+			return true
+		}
+
+		def groupPath = pub.groupId.replace('.', '/')
+		def artifactName = "${pub.artifactId}-${pub.version}.jar"
+		def artifactUrl = "${repo.url.toString().replaceAll('/+$', '')}/${groupPath}/${pub.artifactId}/${pub.version}/${artifactName}"
+
+		try {
+			def conn = (HttpURLConnection) new URI(artifactUrl).toURL().openConnection()
+			conn.requestMethod = 'HEAD'
+			conn.connectTimeout = 8000
+			conn.readTimeout = 8000
+			conn.instanceFollowRedirects = true
+
+			def user = repo.credentials.username
+			def pass = repo.credentials.password
+			if (user && pass) {
+				def auth = "${user}:${pass}".bytes.encodeBase64().toString()
+				conn.setRequestProperty('Authorization', "Basic ${auth}")
+			}
+
+			int code = conn.responseCode
+			conn.disconnect()
+
+			if (code == 200) {
+				logger.lifecycle("Artifact ${pub.groupId}:${pub.artifactId}:${pub.version} already exists in ${repo.name}. Skipping ${task.name}.")
+				return false
+			}
+		} catch (Exception e) {
+			logger.warn("Could not check if artifact exists for ${task.name}: ${e.message}")
+		}
+		return true
 	}
 }
