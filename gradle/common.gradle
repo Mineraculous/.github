@@ -464,7 +464,6 @@ plugins.withId('dev.lukebemish.immaculate') {
 			}
 			if (configFile.exists()) {
 				eclipse {
-					version '3.37.0'
 					config = configFile
 				}
 			}
