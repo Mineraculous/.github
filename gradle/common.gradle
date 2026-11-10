@@ -18,7 +18,7 @@ def isInternalProject = project.group.toString().startsWith("dev.thomasglasser")
 // ------------------------------------------------------------------------------
 tasks.named('wrapper', Wrapper).configure {
 	distributionType = Wrapper.DistributionType.BIN
-	gradleVersion = '9.9.0'
+	gradleVersion = '9.9.1'
 }
 
 base {
