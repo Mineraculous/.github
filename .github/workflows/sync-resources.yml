@@ -33,19 +33,14 @@ on:
 jobs:
   sync-assets:
     runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.workflow }}-${{ inputs.mod-id }}-${{ inputs.target-branch }}
+      cancel-in-progress: false
     steps:
       - name: Checkout Source Repository
         uses: actions/checkout@v7
         with:
           path: source-repo
-
-      - name: Checkout Target Repository
-        uses: actions/checkout@v7
-        with:
-          repository: ${{ inputs.target-repo }}
-          token: ${{ secrets.SYNC_TOKEN }}
-          path: target-repo
-          ref: ${{ inputs.target-branch }}
 
       - name: Determine Java Version
         if: ${{ inputs.run-datagen }}
@@ -78,6 +73,14 @@ jobs:
         env:
           MINERACULOUS_USERNAME: ${{ secrets.MINERACULOUS_USERNAME }}
           MINERACULOUS_PASSWORD: ${{ secrets.MINERACULOUS_PASSWORD }}
+
+      - name: Checkout Target Repository
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.target-repo }}
+          token: ${{ secrets.SYNC_TOKEN }}
+          path: target-repo
+          ref: ${{ inputs.target-branch }}
 
       - name: Merge and Sync Directories
         run: |
@@ -131,5 +134,16 @@ jobs:
             echo "No changes detected. Skipping commit."
           else
             git commit -m "chore: sync ${{ inputs.mod-id }} resources from source"
-            git push
+            max_attempts=5
+            attempt=1
+            until git push; do
+              if [ "$attempt" -ge "$max_attempts" ]; then
+                echo "::error::Failed to push after $max_attempts attempts."
+                exit 1
+              fi
+              echo "Push rejected (attempt $attempt/$max_attempts). Pulling remote changes and retrying..."
+              attempt=$((attempt + 1))
+              sleep $((attempt * 2))
+              git pull --rebase origin "${{ inputs.target-branch }}"
+            done
           fi
